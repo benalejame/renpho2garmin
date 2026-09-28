@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Renpho a Garmin Auto-Sync</title>
+
+    <!-- Favicon SVG Báscula inteligente embebido en Data URI -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23090d16%22/%3E%3Crect%20x%3D%225%22%20y%3D%225%22%20width%3D%2222%22%20height%3D%2222%22%20rx%3D%224%22%20fill%3D%22%231e293b%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.8%22/%3E%3Crect%20x%3D%2211.5%22%20y%3D%227.5%22%20width%3D%229%22%20height%3D%223.5%22%20rx%3D%221%22%20fill%3D%22%2338bdf8%22/%3E%3Cpath%20d%3D%22M8.5%2014a2.5%202.5%200%200%201%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M23.5%2014a2.5%202.5%200%200%200%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M10%2023h12%22%20stroke%3D%22%2338bdf8%22%20stroke-opacity%3D%220.5%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23090d16%22/%3E%3Crect%20x%3D%225%22%20y%3D%225%22%20width%3D%2222%22%20height%3D%2222%22%20rx%3D%224%22%20fill%3D%22%231e293b%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.8%22/%3E%3Crect%20x%3D%2211.5%22%20y%3D%227.5%22%20width%3D%229%22%20height%3D%223.5%22%20rx%3D%221%22%20fill%3D%22%2338bdf8%22/%3E%3Cpath%20d%3D%22M8.5%2014a2.5%202.5%200%200%201%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M23.5%2014a2.5%202.5%200%200%200%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M10%2023h12%22%20stroke%3D%22%2338bdf8%22%20stroke-opacity%3D%220.5%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E">
+
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
@@ -290,7 +295,7 @@
                     rows.push(o);
                 }
 
-                // Obtener el registro más reciente con datos completos
+                // Extraer la medición válida más reciente
                 let row = null;
                 for (let k = 0; k < rows.length; k++) {
                     let f = rows[k]['Porcentaje de grasa corporal(%)'] || rows[k]['Grasa corporal(%)'] || rows[k]['Body Fat(%)'];
@@ -309,7 +314,7 @@
                 let bmi = parseFloat(g(['IMC', 'BMI']));
                 let grasa = parseFloat(g(['Porcentaje de grasa corporal(%)', 'Grasa corporal(%)', 'Body Fat(%)']));
                 
-                // Priorizar siempre la Masa Muscular total para el cálculo y el estándar FIT
+                // Priorizar siempre la Masa Muscular total para cálculo de complexión y archivo FIT
                 let musculo = parseFloat(g(['Masa muscular(kg)', 'Masa muscular', 'Muscle Mass(kg)', 'Muscle Mass', 'Masa muscular esquelética(kg)', 'Masa muscular esqueletica(kg)']));
                 let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Agua corporal(%)', 'Body Water(%)']));
                 let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Masa ósea', 'Bone Mass(kg)']));
@@ -325,7 +330,7 @@
                 let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
                 let timestamp = Math.floor((dt.getTime() - garminEpoch) / 1000);
 
-                // Cálculo de Clasificación Física (1 - 9)
+                // Cálculo exacto de Clasificación Física (1 - 9)
                 let physique = 6;
                 if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
                     let mRatio = musculo / peso;
@@ -338,7 +343,7 @@
                     }
                 }
 
-                // Visualización de métricas
+                // Visualización en pantalla
                 let grid = document.getElementById('metrics-card');
                 grid.style.display = 'grid';
                 grid.innerHTML = `
@@ -353,7 +358,7 @@
                     <div class="metric-item"><span>Clasificación física:</span><strong>${physique}</strong></div>
                 `;
 
-                // Construcción de la estructura binaria .FIT de Garmin Index S2
+                // Construir binario FIT Index S2
                 generatedFitBase64 = buildFitBase64(timestamp, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique);
 
                 let btn = document.getElementById('btn-submit');
@@ -371,7 +376,7 @@
     function buildFitBase64(ts, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique) {
         let records = [];
 
-        // 1. File ID Message (Global 0)
+        // 1. File ID Message (Global 0) - Garmin Index Scale (2429)
         records.push(
             0x40, 0x00, 0x00, 0x00, 0x00, 0x05,
             0x00, 0x01, 0x00,
