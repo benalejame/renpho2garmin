@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Renpho a Garmin Auto-Sync</title>
 
-    <!-- Favicon SVG con invalidación de caché para Chrome -->
+    <!-- Favicon SVG Báscula inteligente embebido en Data URI -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23090d16%22/%3E%3Crect%20x%3D%225%22%20y%3D%225%22%20width%3D%2222%22%20height%3D%2222%22%20rx%3D%224%22%20fill%3D%22%231e293b%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.8%22/%3E%3Crect%20x%3D%2211.5%22%20y%3D%227.5%22%20width%3D%229%22%20height%3D%223.5%22%20rx%3D%221%22%20fill%3D%22%2338bdf8%22/%3E%3Cpath%20d%3D%22M8.5%2014a2.5%202.5%200%200%201%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M23.5%2014a2.5%202.5%200%200%200%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M10%2023h12%22%20stroke%3D%22%2338bdf8%22%20stroke-opacity%3D%220.5%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E#v=2">
     <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23090d16%22/%3E%3Crect%20x%3D%225%22%20y%3D%225%22%20width%3D%2222%22%20height%3D%2222%22%20rx%3D%224%22%20fill%3D%22%231e293b%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.8%22/%3E%3Crect%20x%3D%2211.5%22%20y%3D%227.5%22%20width%3D%229%22%20height%3D%223.5%22%20rx%3D%221%22%20fill%3D%22%2338bdf8%22/%3E%3Cpath%20d%3D%22M8.5%2014a2.5%202.5%200%200%201%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M23.5%2014a2.5%202.5%200%200%200%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M10%2023h12%22%20stroke%3D%22%2338bdf8%22%20stroke-opacity%3D%220.5%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E">
 
@@ -41,7 +41,32 @@
             font-size: 13px;
             color: #94a3b8;
             text-align: center;
-            margin: 0 0 20px 0;
+            margin: 0 0 16px 0;
+        }
+        .gender-selector {
+            display: flex;
+            background: #0f172a;
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 16px;
+            border: 1px solid #334155;
+            gap: 4px;
+        }
+        .gender-btn {
+            flex: 1;
+            padding: 8px;
+            background: transparent;
+            border: none;
+            border-radius: 8px;
+            color: #94a3b8;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .gender-btn.active {
+            background: #0284c7;
+            color: white;
         }
         .file-box {
             position: relative;
@@ -187,6 +212,12 @@
     <h1>Renpho ➔ Garmin Connect</h1>
     <p>Selecciona tu CSV para subir automáticamente tus mediciones.</p>
 
+    <!-- Selector de Sexo -->
+    <div class="gender-selector">
+        <button type="button" class="gender-btn active" id="btn-male">Hombre</button>
+        <button type="button" class="gender-btn" id="btn-female">Mujer</button>
+    </div>
+
     <div class="file-box">
         <svg class="scale-icon" viewBox="0 0 24 24">
             <rect x="2.5" y="2.5" width="19" height="19" rx="4" />
@@ -245,6 +276,36 @@
     }
 
     let generatedFitBase64 = null;
+    let cachedCSVContent = null;
+    let selectedGender = localStorage.getItem('garmin_gender') || 'male';
+
+    const btnMale = document.getElementById('btn-male');
+    const btnFemale = document.getElementById('btn-female');
+
+    function updateGenderUI() {
+        if (selectedGender === 'female') {
+            btnFemale.classList.add('active');
+            btnMale.classList.remove('active');
+        } else {
+            btnMale.classList.add('active');
+            btnFemale.classList.remove('active');
+        }
+    }
+    updateGenderUI();
+
+    btnMale.addEventListener('click', function() {
+        selectedGender = 'male';
+        localStorage.setItem('garmin_gender', 'male');
+        updateGenderUI();
+        if (cachedCSVContent) processCSV(cachedCSVContent);
+    });
+
+    btnFemale.addEventListener('click', function() {
+        selectedGender = 'female';
+        localStorage.setItem('garmin_gender', 'female');
+        updateGenderUI();
+        if (cachedCSVContent) processCSV(cachedCSVContent);
+    });
 
     // Gestión de credenciales locales
     const emailInput = document.getElementById('email');
@@ -279,61 +340,76 @@
 
         let reader = new FileReader();
         reader.onload = function(evt) {
-            try {
-                let lines = evt.target.result.split(/\r?\n/);
-                if (lines.length < 2) throw new Error("CSV inválido.");
-                let headers = lines[0].split(',');
-                let rows = [];
-                for (let i = 1; i < lines.length; i++) {
-                    let l = lines[i].trim();
-                    if (!l) continue;
-                    let c = l.split(',');
-                    let o = {};
-                    for (let j = 0; j < headers.length; j++) {
-                        if (headers[j]) o[headers[j].trim()] = c[j] ? c[j].trim() : '';
+            cachedCSVContent = evt.target.result;
+            processCSV(cachedCSVContent);
+        };
+        reader.readAsText(file, 'UTF-8-SIG');
+    });
+
+    function processCSV(text) {
+        try {
+            let lines = text.split(/\r?\n/);
+            if (lines.length < 2) throw new Error("CSV inválido.");
+            let headers = lines[0].split(',');
+            let rows = [];
+            for (let i = 1; i < lines.length; i++) {
+                let l = lines[i].trim();
+                if (!l) continue;
+                let c = l.split(',');
+                let o = {};
+                for (let j = 0; j < headers.length; j++) {
+                    if (headers[j]) o[headers[j].trim()] = c[j] ? c[j].trim() : '';
+                }
+                rows.push(o);
+            }
+
+            let row = null;
+            for (let k = 0; k < rows.length; k++) {
+                let f = rows[k]['Porcentaje de grasa corporal(%)'] || rows[k]['Grasa corporal(%)'] || rows[k]['Body Fat(%)'];
+                if (f && f !== '--') { row = rows[k]; break; }
+            }
+            if (!row) throw new Error("No hay registros completos en el CSV.");
+
+            function g(names) {
+                for (let n of names) {
+                    if (row[n] !== undefined && row[n] !== '' && row[n] !== '--') return row[n].replace(',', '.');
+                }
+                return null;
+            }
+
+            let peso = parseFloat(g(['Peso(kg)', 'Weight(kg)']));
+            let bmi = parseFloat(g(['IMC', 'BMI']));
+            let grasa = parseFloat(g(['Porcentaje de grasa corporal(%)', 'Grasa corporal(%)', 'Body Fat(%)']));
+            let musculo = parseFloat(g(['Masa muscular(kg)', 'Masa muscular', 'Muscle Mass(kg)', 'Muscle Mass', 'Masa muscular esquelética(kg)', 'Masa muscular esqueletica(kg)']));
+            let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Agua corporal(%)', 'Body Water(%)']));
+            let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Masa ósea', 'Bone Mass(kg)']));
+            let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 0, 10);
+            let metabolic = parseInt(g(['Edad metabólica', 'Edad metabolica', 'Metabolic Age']) || 0, 10);
+
+            let fecha = g(['Fecha', 'Date']);
+            let hora = g(['Hora', 'Time']) || '08:00:00';
+
+            let [y, m, d] = fecha.replace(/\./g, '-').split('-');
+            let [hh, mm, ss] = hora.split(':');
+            let dt = new Date(Date.UTC(y, m - 1, d, hh || 8, mm || 0, ss || 0));
+            let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
+            let timestamp = Math.floor((dt.getTime() - garminEpoch) / 1000);
+
+            // Cálculo diferenciado por sexo
+            let physique = 6;
+            if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
+                let mRatio = musculo / peso;
+                if (selectedGender === 'female') {
+                    // Umbrales para mujer
+                    if (grasa < 21) {
+                        physique = (mRatio >= 0.70) ? 9 : ((mRatio >= 0.64) ? 8 : 7);
+                    } else if (grasa <= 33) {
+                        physique = (mRatio >= 0.68) ? 6 : ((mRatio >= 0.62) ? 5 : 4);
+                    } else {
+                        physique = (mRatio >= 0.65) ? 3 : ((mRatio >= 0.58) ? 2 : 1);
                     }
-                    rows.push(o);
-                }
-
-                // Obtener el registro más reciente con datos completos
-                let row = null;
-                for (let k = 0; k < rows.length; k++) {
-                    let f = rows[k]['Porcentaje de grasa corporal(%)'] || rows[k]['Grasa corporal(%)'] || rows[k]['Body Fat(%)'];
-                    if (f && f !== '--') { row = rows[k]; break; }
-                }
-                if (!row) throw new Error("No hay registros completos en el CSV.");
-
-                function g(names) {
-                    for (let n of names) {
-                        if (row[n] !== undefined && row[n] !== '' && row[n] !== '--') return row[n].replace(',', '.');
-                    }
-                    return null;
-                }
-
-                let peso = parseFloat(g(['Peso(kg)', 'Weight(kg)']));
-                let bmi = parseFloat(g(['IMC', 'BMI']));
-                let grasa = parseFloat(g(['Porcentaje de grasa corporal(%)', 'Grasa corporal(%)', 'Body Fat(%)']));
-                
-                // Priorizar la masa muscular total para complexión y estándar FIT
-                let musculo = parseFloat(g(['Masa muscular(kg)', 'Masa muscular', 'Muscle Mass(kg)', 'Muscle Mass', 'Masa muscular esquelética(kg)', 'Masa muscular esqueletica(kg)']));
-                let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Agua corporal(%)', 'Body Water(%)']));
-                let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Masa ósea', 'Bone Mass(kg)']));
-                let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 0, 10);
-                let metabolic = parseInt(g(['Edad metabólica', 'Edad metabolica', 'Metabolic Age']) || 0, 10);
-
-                let fecha = g(['Fecha', 'Date']);
-                let hora = g(['Hora', 'Time']) || '08:00:00';
-
-                let [y, m, d] = fecha.replace(/\./g, '-').split('-');
-                let [hh, mm, ss] = hora.split(':');
-                let dt = new Date(Date.UTC(y, m - 1, d, hh || 8, mm || 0, ss || 0));
-                let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
-                let timestamp = Math.floor((dt.getTime() - garminEpoch) / 1000);
-
-                // Cálculo exacto de Clasificación Física (1 - 9)
-                let physique = 6;
-                if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
-                    let mRatio = musculo / peso;
+                } else {
+                    // Umbrales para hombre
                     if (grasa < 14) {
                         physique = (mRatio >= 0.76) ? 9 : ((mRatio >= 0.70) ? 8 : 7);
                     } else if (grasa <= 22) {
@@ -342,38 +418,36 @@
                         physique = (mRatio >= 0.72) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
                     }
                 }
-
-                // Render grid
-                let grid = document.getElementById('metrics-card');
-                grid.style.display = 'grid';
-                grid.innerHTML = `
-                    <div class="metric-item"><span>Peso:</span><strong>${peso} kg</strong></div>
-                    <div class="metric-item"><span>IMC:</span><strong>${bmi}</strong></div>
-                    <div class="metric-item"><span>Grasa corporal:</span><strong>${grasa}%</strong></div>
-                    <div class="metric-item"><span>Masa muscular:</span><strong>${musculo} kg</strong></div>
-                    <div class="metric-item"><span>Agua corporal:</span><strong>${agua}%</strong></div>
-                    <div class="metric-item"><span>Masa ósea:</span><strong>${hueso} kg</strong></div>
-                    <div class="metric-item"><span>Grasa Visceral:</span><strong>${visceral}</strong></div>
-                    <div class="metric-item"><span>Edad metabólica:</span><strong>${metabolic} a.</strong></div>
-                    <div class="metric-item"><span>Clasificación física:</span><strong>${physique}</strong></div>
-                `;
-
-                // Construcción FIT binario (Index S2 Scale)
-                generatedFitBase64 = buildFitBase64(timestamp, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique);
-
-                let btn = document.getElementById('btn-submit');
-                btn.disabled = false;
-                btn.innerText = "Subir medición a Garmin Connect";
-                showStatus("Archivo procesado. Listo para sincronizar.", "success");
-
-            } catch (err) {
-                showStatus(err.message, "error");
             }
-        };
-        reader.readAsText(file, 'UTF-8-SIG');
-    });
 
-    function buildFitBase64(ts, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique) {
+            let grid = document.getElementById('metrics-card');
+            grid.style.display = 'grid';
+            grid.innerHTML = `
+                <div class="metric-item"><span>Peso:</span><strong>${peso} kg</strong></div>
+                <div class="metric-item"><span>IMC:</span><strong>${bmi}</strong></div>
+                <div class="metric-item"><span>Grasa corporal:</span><strong>${grasa}%</strong></div>
+                <div class="metric-item"><span>Masa muscular:</span><strong>${musculo} kg</strong></div>
+                <div class="metric-item"><span>Agua corporal:</span><strong>${agua}%</strong></div>
+                <div class="metric-item"><span>Masa ósea:</span><strong>${hueso} kg</strong></div>
+                <div class="metric-item"><span>Grasa Visceral:</span><strong>${visceral}</strong></div>
+                <div class="metric-item"><span>Edad metabólica:</span><strong>${metabolic} a.</strong></div>
+                <div class="metric-item"><span>Clasificación física:</span><strong>${physique}</strong></div>
+            `;
+
+            let genderByte = (selectedGender === 'female') ? 0x00 : 0x01;
+            generatedFitBase64 = buildFitBase64(timestamp, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique, genderByte);
+
+            let btn = document.getElementById('btn-submit');
+            btn.disabled = false;
+            btn.innerText = "Subir medición a Garmin Connect";
+            showStatus("Archivo procesado. Listo para sincronizar.", "success");
+
+        } catch (err) {
+            showStatus(err.message, "error");
+        }
+    }
+
+    function buildFitBase64(ts, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique, genderByte) {
         let records = [];
 
         // 1. File ID Message (Global 0) - Garmin Index S2
@@ -400,7 +474,7 @@
             0x16, 0x02, 0x84
         );
         let wProf = new Uint8Array(new Uint16Array([Math.round(peso * 10)]).buffer);
-        records.push(0x00, 0x01, 0x28, wProf[0], wProf[1], 0x64, 0x5A, 0x00, 0x00, 0x00, 0x00);
+        records.push(0x00, genderByte, 0x28, wProf[0], wProf[1], 0x64, 0x5A, 0x00, 0x00, 0x00, 0x00);
 
         // 3. Weight Scale Message (Global 30)
         records.push(
