@@ -17,7 +17,7 @@ def handler(event, context):
     return {
         "statusCode": 405,
         "headers": headers,
-        "body": json.dumps({"success": False, "error": "M√©todo no permitido"}),
+        "body": json.dumps({"success": False, "error": "MÈtodo no permitido"}),
     }
 
   try:
@@ -42,15 +42,15 @@ def handler(event, context):
           "statusCode": 400,
           "headers": headers,
           "body": json.dumps(
-              {"success": False, "error": "No se recibieron m√©tricas del CSV."}
+              {"success": False, "error": "No se recibieron mÈtricas del CSV."}
           ),
       }
 
-    # Iniciar sesi√≥n en Garmin
+    # Iniciar sesiÛn en Garmin
     client = Garmin(email, password)
     client.login()
 
-    # Enviar datos a la API de b√°scula de Garmin
+    # Enviar datos a la API de b·scula de Garmin
     client.add_body_composition(
         timestamp=m.get("timestamp"),
         weight=m.get("weight"),
