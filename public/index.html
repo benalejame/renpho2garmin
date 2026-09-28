@@ -1,1 +1,401 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Renpho a Garmin Auto-Sync</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background-color: #090d16;
+            color: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 16px;
+            box-sizing: border-box;
+        }
+        .card {
+            background: #1e293b;
+            padding: 24px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+            max-width: 440px;
+            width: 100%;
+            border: 1px solid #334155;
+        }
+        h1 {
+            font-size: 20px;
+            color: #38bdf8;
+            margin: 0 0 6px 0;
+            text-align: center;
+        }
+        p {
+            font-size: 13px;
+            color: #94a3b8;
+            text-align: center;
+            margin: 0 0 20px 0;
+        }
+        .file-box {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px 15px;
+            border: 2px dashed #0284c7;
+            border-radius: 12px;
+            background-color: #0f172a;
+            cursor: pointer;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .file-box input {
+            position: absolute;
+            left: 0; top: 0; width: 100%; height: 100%;
+            opacity: 0; cursor: pointer;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            background: #0f172a;
+            padding: 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            margin-bottom: 16px;
+            display: none;
+        }
+        .metric-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 6px;
+            background: #1e293b;
+            border-radius: 6px;
+        }
+        .metric-item span { color: #94a3b8; }
+        .metric-item strong { color: #38bdf8; }
+        .input-group {
+            margin-bottom: 12px;
+            text-align: left;
+        }
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: #cbd5e1;
+            margin-bottom: 4px;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 10px 12px;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .btn-sync {
+            width: 100%;
+            padding: 14px;
+            background: #0284c7;
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+            margin-top: 10px;
+        }
+        .btn-sync:hover { background: #0369a1; }
+        .btn-sync:disabled { background: #475569; cursor: not-allowed; }
+        .status {
+            margin-top: 14px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            display: none;
+            line-height: 1.4;
+        }
+        .status.success { background: #064e3b; color: #a7f3d0; border: 1px solid #059669; display: block; }
+        .status.error { background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; display: block; }
+        .status.loading { background: #1e3a5f; color: #93c5fd; border: 1px solid #2563eb; display: block; }
+    </style>
+</head>
+<body>
 
+<div class="card">
+    <h1>Renpho ➔ Garmin Connect</h1>
+    <p>Selecciona tu CSV para subir automáticamente tus mediciones.</p>
+
+    <div class="file-box">
+        <div style="font-size: 32px; margin-bottom: 6px;">⚖️</div>
+        <strong id="file-label" style="font-size: 14px;">Toca para cargar renpho.csv</strong>
+        <input type="file" id="csv-file" accept=".csv">
+    </div>
+
+    <div id="metrics-card" class="metrics-grid"></div>
+
+    <div class="input-group">
+        <label>Correo de Garmin Connect</label>
+        <input type="email" id="email" value="ben16r@gmail.com">
+    </div>
+    <div class="input-group">
+        <label>Contraseña de Garmin Connect</label>
+        <input type="password" id="password" value="Garm23652+">
+    </div>
+
+    <button id="btn-submit" class="btn-sync" disabled>Sube un archivo CSV primero</button>
+    <div id="status" class="status"></div>
+</div>
+
+<script>
+    const crcTable = [
+        0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
+        0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
+    ];
+
+    function calculateCRC(buffer, start, end) {
+        let crc = 0;
+        for (let i = start; i < end; i++) {
+            let byte = buffer[i];
+            let tmp = crcTable[crc & 0xF];
+            crc = (crc >> 4) & 0x0FFF;
+            crc = crc ^ tmp ^ crcTable[byte & 0xF];
+            tmp = crcTable[crc & 0xF];
+            crc = (crc >> 4) & 0x0FFF;
+            crc = crc ^ tmp ^ crcTable[(byte >> 4) & 0xF];
+        }
+        return crc;
+    }
+
+    let generatedFitBase64 = null;
+    let measurementDate = null;
+
+    document.getElementById('csv-file').addEventListener('change', function(e) {
+        let file = e.target.files[0];
+        if (!file) return;
+        document.getElementById('file-label').innerText = file.name;
+
+        let reader = new FileReader();
+        reader.onload = function(evt) {
+            try {
+                let lines = evt.target.result.split(/\r?\n/);
+                if (lines.length < 2) throw new Error("CSV inválido.");
+                let headers = lines[0].split(',');
+                let rows = [];
+                for (let i = 1; i < lines.length; i++) {
+                    let l = lines[i].trim();
+                    if (!l) continue;
+                    let c = l.split(',');
+                    let o = {};
+                    for (let j = 0; j < headers.length; j++) {
+                        if (headers[j]) o[headers[j].trim()] = c[j] ? c[j].trim() : '';
+                    }
+                    rows.push(o);
+                }
+
+                let row = null;
+                for (let k = 0; k < rows.length; k++) {
+                    let f = rows[k]['Porcentaje de grasa corporal(%)'] || rows[k]['Grasa corporal(%)'] || rows[k]['Body Fat(%)'];
+                    if (f && f !== '--') { row = rows[k]; break; }
+                }
+                if (!row) throw new Error("No hay registros completos en el CSV.");
+
+                function g(names) {
+                    for (let n of names) {
+                        if (row[n] !== undefined && row[n] !== '' && row[n] !== '--') return row[n].replace(',', '.');
+                    }
+                    return null;
+                }
+
+                let peso = parseFloat(g(['Peso(kg)', 'Weight(kg)']));
+                let bmi = parseFloat(g(['IMC', 'BMI']));
+                let grasa = parseFloat(g(['Porcentaje de grasa corporal(%)', 'Grasa corporal(%)', 'Body Fat(%)']));
+                let musculo = parseFloat(g(['Masa muscular(kg)', 'Muscle Mass(kg)']));
+                let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Body Water(%)']));
+                let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Bone Mass(kg)']));
+                let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 0, 10);
+                let metabolic = parseInt(g(['Edad metabólica', 'Edad metabolica', 'Metabolic Age']) || 0, 10);
+
+                let fecha = g(['Fecha', 'Date']);
+                let hora = g(['Hora', 'Time']) || '08:00:00';
+                measurementDate = `${fecha} ${hora}`;
+
+                let [y, m, d] = fecha.replace(/\./g, '-').split('-');
+                let [hh, mm, ss] = hora.split(':');
+                let dt = new Date(Date.UTC(y, m - 1, d, hh || 8, mm || 0, ss || 0));
+                let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
+                let timestamp = Math.floor((dt.getTime() - garminEpoch) / 1000);
+
+                let physique = 6;
+                if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
+                    let mRatio = musculo / peso;
+                    if (grasa < 14) physique = (mRatio >= 0.76) ? 9 : ((mRatio >= 0.70) ? 8 : 7);
+                    else if (grasa <= 22) physique = (mRatio >= 0.75) ? 6 : ((mRatio >= 0.68) ? 5 : 4);
+                    else physique = (mRatio >= 0.72) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
+                }
+
+                // Render grid
+                let grid = document.getElementById('metrics-card');
+                grid.style.display = 'grid';
+                grid.innerHTML = `
+                    <div class="metric-item"><span>Peso:</span><strong>${peso} kg</strong></div>
+                    <div class="metric-item"><span>Grasa:</span><strong>${grasa}%</strong></div>
+                    <div class="metric-item"><span>Músculo:</span><strong>${musculo} kg</strong></div>
+                    <div class="metric-item"><span>Agua:</span><strong>${agua}%</strong></div>
+                    <div class="metric-item"><span>Hueso:</span><strong>${hueso} kg</strong></div>
+                    <div class="metric-item"><span>Visceral:</span><strong>${visceral}</strong></div>
+                    <div class="metric-item"><span>Metabólica:</span><strong>${metabolic} a.</strong></div>
+                    <div class="metric-item"><span>Complexión:</span><strong>${physique}</strong></div>
+                `;
+
+                // Construcción FIT binario (Index S2 Scale)
+                generatedFitBase64 = buildFitBase64(timestamp, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique);
+
+                let btn = document.getElementById('btn-submit');
+                btn.disabled = false;
+                btn.innerText = "Subir medición a Garmin Connect";
+                showStatus("Archivo procesado. Listo para sincronizar.", "success");
+
+            } catch (err) {
+                showStatus(err.message, "error");
+            }
+        };
+        reader.readAsText(file, 'UTF-8-SIG');
+    });
+
+    function buildFitBase64(ts, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique) {
+        let records = [];
+        // File ID
+        records.push(
+            0x40, 0x00, 0x00, 0x00, 0x00, 0x05,
+            0x00, 0x01, 0x00,
+            0x01, 0x02, 0x84,
+            0x02, 0x02, 0x84,
+            0x03, 0x04, 0x8C,
+            0x04, 0x04, 0x86
+        );
+        let tsB = new Uint8Array(new Uint32Array([ts]).buffer);
+        records.push(0x00, 0x09, 0x01, 0x00, 0x7D, 0x09, 0xD2, 0x04, 0x00, 0x00, tsB[0], tsB[1], tsB[2], tsB[3]);
+
+        // User Profile
+        records.push(
+            0x40, 0x00, 0x00, 0x03, 0x00, 0x07,
+            0x01, 0x01, 0x00,
+            0x02, 0x01, 0x02,
+            0x04, 0x02, 0x84,
+            0x03, 0x01, 0x02,
+            0x11, 0x01, 0x00,
+            0xFE, 0x02, 0x84,
+            0x16, 0x02, 0x84
+        );
+        let wProf = new Uint8Array(new Uint16Array([Math.round(peso * 10)]).buffer);
+        records.push(0x00, 0x01, 0x28, wProf[0], wProf[1], 0x64, 0x5A, 0x00, 0x00, 0x00, 0x00);
+
+        // Weight Scale
+        records.push(
+            0x40, 0x00, 0x00, 0x1E, 0x00, 0x0B,
+            0xFD, 0x04, 0x86,
+            0x0C, 0x02, 0x84,
+            0x00, 0x02, 0x84,
+            0x01, 0x02, 0x84,
+            0x02, 0x02, 0x84,
+            0x05, 0x02, 0x84,
+            0x04, 0x02, 0x84,
+            0x0A, 0x01, 0x02,
+            0x08, 0x01, 0x02,
+            0x0B, 0x01, 0x02,
+            0x0D, 0x02, 0x84
+        );
+        let wVal = new Uint8Array(new Uint16Array([Math.round(peso * 100)]).buffer);
+        let fVal = new Uint8Array(new Uint16Array([Math.round(grasa * 100)]).buffer);
+        let hVal = new Uint8Array(new Uint16Array([Math.round(agua * 100)]).buffer);
+        let mVal = new Uint8Array(new Uint16Array([Math.round(musculo * 100)]).buffer);
+        let bVal = new Uint8Array(new Uint16Array([Math.round(hueso * 100)]).buffer);
+        let bmiVal = new Uint8Array(new Uint16Array([Math.round(bmi * 10)]).buffer);
+
+        records.push(
+            0x00,
+            tsB[0], tsB[1], tsB[2], tsB[3],
+            0x00, 0x00,
+            wVal[0], wVal[1],
+            fVal[0], fVal[1],
+            hVal[0], hVal[1],
+            mVal[0], mVal[1],
+            bVal[0], bVal[1],
+            metabolic & 0xFF,
+            physique & 0xFF,
+            visceral & 0xFF,
+            bmiVal[0], bmiVal[1]
+        );
+
+        let dataLen = records.length;
+        let header = [
+            14, 0x20, 0xB3, 0x52,
+            dataLen & 0xFF, (dataLen >> 8) & 0xFF, (dataLen >> 16) & 0xFF, (dataLen >> 24) & 0xFF,
+            0x2E, 0x46, 0x49, 0x54, 0x00, 0x00
+        ];
+
+        let buf = new Uint8Array(header.length + dataLen + 2);
+        buf.set(header, 0);
+        buf.set(records, header.length);
+
+        let view = new DataView(buf.buffer);
+        view.setUint16(12, calculateCRC(buf, 0, 12), true);
+        view.setUint16(buf.length - 2, calculateCRC(buf, 0, buf.length - 2), true);
+
+        // Convertir a Base64
+        let binary = '';
+        for (let b = 0; b < buf.length; b++) binary += String.fromCharCode(buf[b]);
+        return btoa(binary);
+    }
+
+    document.getElementById('btn-submit').addEventListener('click', async function() {
+        let email = document.getElementById('email').value.trim();
+        let password = document.getElementById('password').value.trim();
+        let btn = document.getElementById('btn-submit');
+
+        if (!email || !password || !generatedFitBase64) {
+            showStatus("Introduce tus credenciales y selecciona un CSV válido.", "error");
+            return;
+        }
+
+        btn.disabled = true;
+        showStatus("Conectando con Garmin Connect y enviando archivo...", "loading");
+
+        try {
+            let res = await fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: email,
+                    password: password,
+                    fitBase64: generatedFitBase64,
+                    filename: `garmin_weight_${Date.now()}.fit`
+                })
+            });
+
+            let data = await res.json();
+            if (res.ok && data.success) {
+                showStatus("¡Medición sincronizada con éxito en Garmin Connect!", "success");
+            } else {
+                showStatus("Error al sincronizar: " + (data.error || "Fallo desconocido."), "error");
+            }
+        } catch (err) {
+            showStatus("Error de red: " + err.message, "error");
+        } finally {
+            btn.disabled = false;
+        }
+    });
+
+    function showStatus(msg, type) {
+        let el = document.getElementById('status');
+        el.className = 'status ' + type;
+        el.innerHTML = msg;
+    }
+</script>
+</body>
+</html>
