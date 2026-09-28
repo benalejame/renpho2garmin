@@ -1,5 +1,0 @@
-[build.environment]
-  PYTHON_VERSION = "3.10"
-
-[functions]
-  directory = "netlify/functions"
