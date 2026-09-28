@@ -1,0 +1,211 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sincronizador Renpho a Garmin</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            max-width: 480px;
+            width: 100%;
+        }
+        h1 {
+            font-size: 22px;
+            color: #007acc;
+            margin-top: 0;
+            text-align: center;
+        }
+        p {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.4;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #475569;
+        }
+        input[type="email"], input[type="password"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        .file-drop-area {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            padding: 25px;
+            border: 2px dashed #cbd5e1;
+            border-radius: 8px;
+            background-color: #f8fafc;
+            cursor: pointer;
+            box-sizing: border-box;
+            margin-top: 10px;
+        }
+        .file-drop-area:hover {
+            border-color: #007acc;
+            background-color: #f0f9ff;
+        }
+        .file-input {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            width: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .btn-submit {
+            width: 100%;
+            margin-top: 20px;
+            padding: 12px;
+            background-color: #007acc;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn-submit:hover {
+            background-color: #005fa3;
+        }
+        .btn-submit:disabled {
+            background-color: #94a3b8;
+            cursor: not-allowed;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            display: none;
+            line-height: 1.6;
+        }
+        .status.success {
+            background-color: #dcfce7;
+            color: #14532d;
+            display: block;
+        }
+        .status.error {
+            background-color: #fee2e2;
+            color: #7f1d1d;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Renpho a Garmin API</h1>
+    <p>Sube tu archivo CSV para sincronizar todas las métricas corporales directamente en Garmin Connect.</p>
+
+    <form id="sync-form">
+        <div class="form-group">
+            <label for="email">Email de Garmin Connect</label>
+            <input type="email" id="email" name="email" required autocomplete="username">
+        </div>
+
+        <div class="form-group">
+            <label for="password">Contraseña de Garmin</label>
+            <input type="password" id="password" name="password" required autocomplete="current-password">
+        </div>
+
+        <div class="form-group">
+            <label>Archivo CSV de Renpho</label>
+            <div class="file-drop-area">
+                <span id="file-label">Toca aquí para elegir tu renpho.csv</span>
+                <input class="file-input" type="file" id="csv_file" name="csv_file" accept=".csv" required>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-submit" id="submit-btn">Sincronizar con Garmin</button>
+    </form>
+
+    <div id="status-box" class="status"></div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('csv_file');
+    const fileLabel = document.getElementById('file-label');
+    const form = document.getElementById('sync-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const statusBox = document.getElementById('status-box');
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+            fileLabel.innerText = fileInput.files[0].name;
+        }
+    });
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Sincronizando...';
+        statusBox.className = 'status';
+        statusBox.style.display = 'none';
+
+        const formData = new FormData(form);
+
+        try {
+            const res = await fetch('/.netlify/functions/sync', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                statusBox.className = 'status success';
+                statusBox.innerHTML = `
+                    <strong>¡Sincronizado con éxito en Garmin Connect!</strong><br>
+                    📅 Fecha: ${data.data.fecha}<br>
+                    ⚖️ Peso: ${data.data.peso} kg<br>
+                    📉 Grasa: ${data.data.grasa}%<br>
+                    🫀 Grasa visceral: ${data.data.visceral}<br>
+                    💪 Músculo: ${data.data.musculo} kg<br>
+                    📊 IMC: ${data.data.bmi}<br>
+                    🔥 BMR: ${data.data.bmr} kcal
+                `;
+            } else {
+                throw new Error(data.error || 'Error desconocido.');
+            }
+        } catch (err) {
+            statusBox.className = 'status error';
+            statusBox.innerHTML = `<strong>Error:</strong> ${err.message}`;
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Sincronizar con Garmin';
+        }
+    });
+</script>
+</body>
+</html>
