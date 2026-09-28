@@ -92,8 +92,19 @@
         }
         .metric-item span { color: #94a3b8; }
         .metric-item strong { color: #38bdf8; font-size: 13.5px; }
+
+        .auth-container {
+            background: #0f172a;
+            padding: 14px;
+            border-radius: 12px;
+            border: 1px solid #334155;
+            margin-bottom: 14px;
+        }
+        .auth-container.hidden {
+            display: none;
+        }
         .input-group {
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             text-align: left;
         }
         .input-group label {
@@ -105,12 +116,38 @@
         .input-group input {
             width: 100%;
             padding: 10px 12px;
-            background: #0f172a;
+            background: #1e293b;
             border: 1px solid #334155;
             border-radius: 8px;
             color: white;
             font-size: 14px;
             box-sizing: border-box;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #94a3b8;
+            margin-top: 6px;
+            cursor: pointer;
+        }
+        .checkbox-group input {
+            width: 16px;
+            height: 16px;
+            accent-color: #0284c7;
+            cursor: pointer;
+        }
+        .toggle-credentials-btn {
+            background: none;
+            border: none;
+            color: #38bdf8;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 4px 0;
+            display: block;
+            margin: 0 auto 12px auto;
+            text-decoration: underline;
         }
         .btn-sync {
             width: 100%;
@@ -123,7 +160,6 @@
             font-weight: 600;
             cursor: pointer;
             transition: 0.2s;
-            margin-top: 10px;
         }
         .btn-sync:hover { background: #0369a1; }
         .btn-sync:disabled { background: #475569; cursor: not-allowed; }
@@ -147,11 +183,9 @@
     <p>Selecciona tu CSV para subir automáticamente tus mediciones.</p>
 
     <div class="file-box">
-        <!-- Icono Báscula Moderna Inteligente -->
         <svg class="scale-icon" viewBox="0 0 24 24">
             <rect x="2.5" y="2.5" width="19" height="19" rx="4" />
             <rect x="8.5" y="5" width="7" height="3" rx="1" fill="#38bdf8" stroke="none" />
-            <!-- Sensores de bioimpedancia -->
             <path d="M5.5 11a2.5 2.5 0 0 1 0 5" />
             <path d="M18.5 11a2.5 2.5 0 0 0 0 5" />
             <path d="M7 19h10" stroke-opacity="0.4" />
@@ -162,16 +196,26 @@
 
     <div id="metrics-card" class="metrics-grid"></div>
 
-    <div class="input-group">
-        <label>Correo de Garmin Connect</label>
-        <input type="email" id="email" value="ben16r@gmail.com">
-    </div>
-    <div class="input-group">
-        <label>Contraseña de Garmin Connect</label>
-        <input type="password" id="password" value="Garm23652+">
-    </div>
+    <form id="auth-form" onsubmit="return false;">
+        <div id="auth-panel" class="auth-container">
+            <div class="input-group">
+                <label for="email">Correo de Garmin Connect</label>
+                <input type="email" id="email" name="username" autocomplete="username" placeholder="usuario@gmail.com">
+            </div>
+            <div class="input-group">
+                <label for="password">Contraseña de Garmin Connect</label>
+                <input type="password" id="password" name="password" autocomplete="current-password" placeholder="••••••••">
+            </div>
+            <label class="checkbox-group">
+                <input type="checkbox" id="remember-me" checked>
+                <span>Recordar credenciales en este dispositivo</span>
+            </label>
+        </div>
 
-    <button id="btn-submit" class="btn-sync" disabled>Sube un archivo CSV primero</button>
+        <button type="button" id="toggle-auth" class="toggle-credentials-btn">Ocultar datos de acceso</button>
+        <button type="submit" id="btn-submit" class="btn-sync" disabled>Sube un archivo CSV primero</button>
+    </form>
+
     <div id="status" class="status"></div>
 </div>
 
@@ -196,6 +240,33 @@
     }
 
     let generatedFitBase64 = null;
+
+    // Cargar credenciales guardadas al iniciar
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const rememberCheckbox = document.getElementById('remember-me');
+    const authPanel = document.getElementById('auth-panel');
+    const toggleAuthBtn = document.getElementById('toggle-auth');
+
+    const savedEmail = localStorage.getItem('garmin_email');
+    const savedPassword = localStorage.getItem('garmin_password');
+
+    if (savedEmail && savedPassword) {
+        emailInput.value = savedEmail;
+        passwordInput.value = savedPassword;
+        rememberCheckbox.checked = true;
+        // Ocultar sección para limpiar la interfaz
+        authPanel.classList.add('hidden');
+        toggleAuthBtn.innerText = '⚙️ Configurar credenciales de acceso';
+    } else {
+        authPanel.classList.remove('hidden');
+        toggleAuthBtn.innerText = 'Ocultar credenciales';
+    }
+
+    toggleAuthBtn.addEventListener('click', function() {
+        const isHidden = authPanel.classList.toggle('hidden');
+        toggleAuthBtn.innerText = isHidden ? '⚙️ Configurar credenciales de acceso' : 'Ocultar credenciales';
+    });
 
     document.getElementById('csv-file').addEventListener('change', function(e) {
         let file = e.target.files[0];
@@ -260,7 +331,6 @@
                     else physique = (mRatio >= 0.72) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
                 }
 
-                // Render grid con las etiquetas solicitadas
                 let grid = document.getElementById('metrics-card');
                 grid.style.display = 'grid';
                 grid.innerHTML = `
@@ -275,7 +345,6 @@
                     <div class="metric-item"><span>Clasificación física:</span><strong>${physique}</strong></div>
                 `;
 
-                // Generar FIT binario
                 generatedFitBase64 = buildFitBase64(timestamp, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique);
 
                 let btn = document.getElementById('btn-submit');
@@ -292,46 +361,26 @@
 
     function buildFitBase64(ts, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique) {
         let records = [];
-        // File ID
         records.push(
             0x40, 0x00, 0x00, 0x00, 0x00, 0x05,
-            0x00, 0x01, 0x00,
-            0x01, 0x02, 0x84,
-            0x02, 0x02, 0x84,
-            0x03, 0x04, 0x8C,
-            0x04, 0x04, 0x86
+            0x00, 0x01, 0x00, 0x01, 0x02, 0x84, 0x02, 0x02, 0x84, 0x03, 0x04, 0x8C, 0x04, 0x04, 0x86
         );
         let tsB = new Uint8Array(new Uint32Array([ts]).buffer);
         records.push(0x00, 0x09, 0x01, 0x00, 0x7D, 0x09, 0xD2, 0x04, 0x00, 0x00, tsB[0], tsB[1], tsB[2], tsB[3]);
 
-        // User Profile
         records.push(
             0x40, 0x00, 0x00, 0x03, 0x00, 0x07,
-            0x01, 0x01, 0x00,
-            0x02, 0x01, 0x02,
-            0x04, 0x02, 0x84,
-            0x03, 0x01, 0x02,
-            0x11, 0x01, 0x00,
-            0xFE, 0x02, 0x84,
-            0x16, 0x02, 0x84
+            0x01, 0x01, 0x00, 0x02, 0x01, 0x02, 0x04, 0x02, 0x84, 0x03, 0x01, 0x02,
+            0x11, 0x01, 0x00, 0xFE, 0x02, 0x84, 0x16, 0x02, 0x84
         );
         let wProf = new Uint8Array(new Uint16Array([Math.round(peso * 10)]).buffer);
         records.push(0x00, 0x01, 0x28, wProf[0], wProf[1], 0x64, 0x5A, 0x00, 0x00, 0x00, 0x00);
 
-        // Weight Scale
         records.push(
             0x40, 0x00, 0x00, 0x1E, 0x00, 0x0B,
-            0xFD, 0x04, 0x86,
-            0x0C, 0x02, 0x84,
-            0x00, 0x02, 0x84,
-            0x01, 0x02, 0x84,
-            0x02, 0x02, 0x84,
-            0x05, 0x02, 0x84,
-            0x04, 0x02, 0x84,
-            0x0A, 0x01, 0x02,
-            0x08, 0x01, 0x02,
-            0x0B, 0x01, 0x02,
-            0x0D, 0x02, 0x84
+            0xFD, 0x04, 0x86, 0x0C, 0x02, 0x84, 0x00, 0x02, 0x84, 0x01, 0x02, 0x84,
+            0x02, 0x02, 0x84, 0x05, 0x02, 0x84, 0x04, 0x02, 0x84, 0x0A, 0x01, 0x02,
+            0x08, 0x01, 0x02, 0x0B, 0x01, 0x02, 0x0D, 0x02, 0x84
         );
         let wVal = new Uint8Array(new Uint16Array([Math.round(peso * 100)]).buffer);
         let fVal = new Uint8Array(new Uint16Array([Math.round(grasa * 100)]).buffer);
@@ -344,15 +393,8 @@
             0x00,
             tsB[0], tsB[1], tsB[2], tsB[3],
             0x00, 0x00,
-            wVal[0], wVal[1],
-            fVal[0], fVal[1],
-            hVal[0], hVal[1],
-            mVal[0], mVal[1],
-            bVal[0], bVal[1],
-            metabolic & 0xFF,
-            physique & 0xFF,
-            visceral & 0xFF,
-            bmiVal[0], bmiVal[1]
+            wVal[0], wVal[1], fVal[0], fVal[1], hVal[0], hVal[1], mVal[0], mVal[1], bVal[0], bVal[1],
+            metabolic & 0xFF, physique & 0xFF, visceral & 0xFF, bmiVal[0], bmiVal[1]
         );
 
         let dataLen = records.length;
@@ -375,14 +417,25 @@
         return btoa(binary);
     }
 
-    document.getElementById('btn-submit').addEventListener('click', async function() {
-        let email = document.getElementById('email').value.trim();
-        let password = document.getElementById('password').value.trim();
+    document.getElementById('auth-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        let email = emailInput.value.trim();
+        let password = passwordInput.value.trim();
         let btn = document.getElementById('btn-submit');
 
         if (!email || !password || !generatedFitBase64) {
             showStatus("Introduce tus credenciales y selecciona un CSV válido.", "error");
             return;
+        }
+
+        // Guardar o eliminar en localStorage según el estado del checkbox
+        if (rememberCheckbox.checked) {
+            localStorage.setItem('garmin_email', email);
+            localStorage.setItem('garmin_password', password);
+        } else {
+            localStorage.removeItem('garmin_email');
+            localStorage.removeItem('garmin_password');
         }
 
         btn.disabled = true;
@@ -402,6 +455,11 @@
             let data = await res.json();
             if (res.ok && data.success) {
                 showStatus("¡Medición sincronizada con éxito en Garmin Connect!", "success");
+                // Si están guardadas, ocultar el panel para dejar la interfaz limpia
+                if (rememberCheckbox.checked) {
+                    authPanel.classList.add('hidden');
+                    toggleAuthBtn.innerText = '⚙️ Configurar credenciales de acceso';
+                }
             } else {
                 showStatus("Error al sincronizar: " + (data.error || "Fallo desconocido."), "error");
             }
