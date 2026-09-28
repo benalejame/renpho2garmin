@@ -1,4 +1,7 @@
 const { GarminConnect } = require('garmin-connect');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 module.exports = async (req, res) => {
     // Habilitar CORS
@@ -19,14 +22,22 @@ module.exports = async (req, res) => {
         return res.status(405).json({ error: 'Método no permitido. Usa POST.' });
     }
 
+    let tempFilePath = null;
+
     try {
-        const { email, password, fitBase64, filename } = req.body;
+        const { email, password, fitBase64 } = req.body;
 
         if (!email || !password || !fitBase64) {
             return res.status(400).json({ error: 'Faltan parámetros (email, password o fitBase64).' });
         }
 
-        // 1. Iniciar sesión en Garmin Connect
+        // 1. Guardar temporalmente el archivo FIT en /tmp
+        const fitBuffer = Buffer.from(fitBase64, 'base64');
+        const tempFileName = `weight_${Date.now()}.fit`;
+        tempFilePath = path.join(os.tmpdir(), tempFileName);
+        fs.writeFileSync(tempFilePath, fitBuffer);
+
+        // 2. Iniciar sesión en Garmin Connect
         const GCClient = new GarminConnect({
             username: email,
             password: password
@@ -34,12 +45,13 @@ module.exports = async (req, res) => {
 
         await GCClient.login();
 
-        // 2. Convertir el Base64 en Buffer binario
-        const fitBuffer = Buffer.from(fitBase64, 'base64');
+        // 3. Subir el archivo pasando la ruta en disco
+        const uploadResult = await GCClient.uploadActivity(tempFilePath, 'fit');
 
-        // 3. Subir el archivo mediante el método nativo de la librería
-        // garmin-connect acepta un Buffer o Blob pasándole el nombre del archivo
-        const uploadResult = await GCClient.uploadActivity(fitBuffer, 'fit');
+        // 4. Limpiar el archivo temporal
+        if (fs.existsSync(tempFilePath)) {
+            fs.unlinkSync(tempFilePath);
+        }
 
         return res.status(200).json({ 
             success: true, 
@@ -48,6 +60,11 @@ module.exports = async (req, res) => {
         });
 
     } catch (err) {
+        // Asegurar limpieza en caso de error
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+            try { fs.unlinkSync(tempFilePath); } catch (e) {}
+        }
+
         console.error("Error al sincronizar con Garmin:", err);
         return res.status(500).json({ 
             success: false, 
