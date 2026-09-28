@@ -1,0 +1,7 @@
+{
+  "name": "renpho2garmin",
+  "version": "1.0.0",
+  "dependencies": {
+    "garmin-connect": "^1.5.0"
+  }
+}
