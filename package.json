@@ -1,7 +1,13 @@
 {
-  "name": "renpho2garmin",
+  "name": "renpho-to-garmin",
   "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "vercel dev"
+  },
   "dependencies": {
-    "garmin-connect": "^1.5.0"
+    "garmin-connect": "^1.5.0",
+    "form-data": "^4.0.0",
+    "node-fetch": "^2.6.7"
   }
 }
