@@ -194,7 +194,6 @@
         return null;
     }
 
-    // Al seleccionar el archivo, procesar y mostrar los datos en pantalla
     document.getElementById('csv_file').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -255,7 +254,6 @@
         reader.readAsText(file, 'UTF-8-SIG');
     });
 
-    // Enviar datos
     document.getElementById('sync-form').addEventListener('submit', async function(e) {
         e.preventDefault();
 
@@ -284,14 +282,19 @@
                 })
             });
 
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => null);
+                throw new Error((errorData && errorData.error) ? errorData.error : `Error HTTP ${res.status}`);
+            }
+
             const result = await res.json();
 
             if (result.success) {
                 box.className = 'status success';
                 box.innerHTML = `
                     <strong>¡Sincronización completada con éxito!</strong><br>
-                    Los datos se han inyectado en Garmin Connect.<br>
-                    📅 ${extractedMetrics.displayDate} | ⚖️ ${extractedMetrics.weight} kg
+                    Los datos se han registrado en Garmin Connect.<br>
+                    📅 ${extractedMetrics.displayDate} | ⚖️ ${extractedMetrics.weight} kg | 🫀 Visceral: ${extractedMetrics.visceral_fat_rating}
                 `;
             } else {
                 throw new Error(result.error || 'Respuesta no exitosa');
