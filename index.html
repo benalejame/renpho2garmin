@@ -68,7 +68,7 @@
             background-color: #f8fafc;
             cursor: pointer;
             box-sizing: border-box;
-            margin-top: 10px;
+            margin-top: 5px;
         }
         .file-drop-area:hover {
             border-color: #007acc;
@@ -110,6 +110,12 @@
             font-size: 13px;
             display: none;
             line-height: 1.6;
+            word-break: break-word;
+        }
+        .status.info {
+            background-color: #eff6ff;
+            color: #1e40af;
+            display: block;
         }
         .status.success {
             background-color: #dcfce7;
@@ -127,24 +133,24 @@
 
 <div class="container">
     <h1>Renpho a Garmin API</h1>
-    <p>Sube tu archivo CSV para sincronizar todas las métricas corporales directamente en Garmin Connect.</p>
+    <p>Sube tu archivo CSV para sincronizar todas las métricas en Garmin Connect.</p>
 
     <form id="sync-form">
         <div class="form-group">
             <label for="email">Email de Garmin Connect</label>
-            <input type="email" id="email" name="email" required autocomplete="username">
+            <input type="email" id="email" required autocomplete="username">
         </div>
 
         <div class="form-group">
             <label for="password">Contraseña de Garmin</label>
-            <input type="password" id="password" name="password" required autocomplete="current-password">
+            <input type="password" id="password" required autocomplete="current-password">
         </div>
 
         <div class="form-group">
             <label>Archivo CSV de Renpho</label>
             <div class="file-drop-area">
                 <span id="file-label">Toca aquí para elegir tu renpho.csv</span>
-                <input class="file-input" type="file" id="csv_file" name="csv_file" accept=".csv" required>
+                <input class="file-input" type="file" id="csv_file" accept=".csv" required>
             </div>
         </div>
 
@@ -155,55 +161,147 @@
 </div>
 
 <script>
-    const fileInput = document.getElementById('csv_file');
-    const fileLabel = document.getElementById('file-label');
-    const form = document.getElementById('sync-form');
-    const submitBtn = document.getElementById('submit-btn');
-    const statusBox = document.getElementById('status-box');
+    let extractedMetrics = null;
 
-    fileInput.addEventListener('change', () => {
-        if (fileInput.files.length > 0) {
-            fileLabel.innerText = fileInput.files[0].name;
+    function parseCSV(text) {
+        let lines = text.split(/\r?\n/);
+        if (lines.length < 2) return null;
+        let headers = lines[0].split(',');
+        let records = [];
+        for (let i = 1; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (!line) continue;
+            let current = line.split(',');
+            let obj = {};
+            for (let j = 0; j < headers.length; j++) {
+                if (headers[j]) obj[headers[j].trim()] = current[j] ? current[j].trim() : '';
+            }
+            records.push(obj);
         }
+        return records;
+    }
+
+    function parseNum(val) {
+        if (!val || val === '--') return null;
+        let n = parseFloat(val.replace(',', '.'));
+        return isNaN(n) ? null : n;
+    }
+
+    function getVal(rec, keys) {
+        for (let k of keys) {
+            if (rec[k] !== undefined && rec[k] !== '' && rec[k] !== '--') return rec[k];
+        }
+        return null;
+    }
+
+    // Al seleccionar el archivo, procesar y mostrar los datos en pantalla
+    document.getElementById('csv_file').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        document.getElementById('file-label').innerText = file.name;
+        const reader = new FileReader();
+
+        reader.onload = function(evt) {
+            try {
+                const records = parseCSV(evt.target.result);
+                if (!records || records.length === 0) throw new Error("CSV vacío o incompatible.");
+
+                let row = null;
+                for (let i = records.length - 1; i >= 0; i--) {
+                    let fat = getVal(records[i], ['Porcentaje de grasa corporal(%)', 'Grasa corporal(%)', 'Body Fat(%)']);
+                    if (fat) { row = records[i]; break; }
+                }
+
+                if (!row) throw new Error("No hay registros con mediciones completas en el CSV.");
+
+                let fecha = getVal(row, ['Fecha', 'Date']);
+                let hora = getVal(row, ['Hora', 'Time']) || '08:00:00';
+                if (!fecha) throw new Error("No se encontró fecha en el CSV.");
+                fecha = fecha.replace(/\./g, '-');
+
+                let dt = new Date(fecha + 'T' + hora);
+                let isoTime = dt.toISOString().replace('.000Z', '.000Z');
+
+                extractedMetrics = {
+                    timestamp: isoTime,
+                    displayDate: `${fecha} ${hora}`,
+                    weight: parseNum(getVal(row, ['Peso(kg)', 'Weight(kg)'])),
+                    percent_fat: parseNum(getVal(row, ['Porcentaje de grasa corporal(%)', 'Grasa corporal(%)', 'Body Fat(%)'])),
+                    percent_hydration: parseNum(getVal(row, ['Porcentaje de agua corporal(%)', 'Agua corporal(%)', 'Body Water(%)'])),
+                    muscle_mass: parseNum(getVal(row, ['Masa muscular(kg)', 'Músculo(kg)', 'Muscle Mass(kg)'])),
+                    bone_mass: parseNum(getVal(row, ['Masa ósea(kg)', 'Hueso(kg)', 'Bone Mass(kg)'])),
+                    visceral_fat_rating: parseInt(getVal(row, ['Grasa visceral', 'Visceral Fat']) || 0, 10),
+                    bmi: parseNum(getVal(row, ['IMC', 'BMI'])),
+                    basal_met: parseNum(getVal(row, ['Metabolismo basal(kcal)', 'BMR(kcal)', 'TMB(kcal)'])),
+                    physique_rating: parseInt(getVal(row, ['Tipo de cuerpo', 'Clasificación física', 'Physique Rating']) || 0, 10)
+                };
+
+                const box = document.getElementById('status-box');
+                box.className = 'status info';
+                box.innerHTML = `
+                    <strong>CSV leído correctamente:</strong><br>
+                    📅 Fecha: ${extractedMetrics.displayDate}<br>
+                    ⚖️ Peso: ${extractedMetrics.weight} kg | 📉 Grasa: ${extractedMetrics.percent_fat}%<br>
+                    🫀 Visceral: ${extractedMetrics.visceral_fat_rating} | 📊 IMC: ${extractedMetrics.bmi}
+                `;
+            } catch (err) {
+                extractedMetrics = null;
+                const box = document.getElementById('status-box');
+                box.className = 'status error';
+                box.innerText = "Error leyendo el archivo: " + err.message;
+            }
+        };
+        reader.readAsText(file, 'UTF-8-SIG');
     });
 
-    form.addEventListener('submit', async (e) => {
+    // Enviar datos
+    document.getElementById('sync-form').addEventListener('submit', async function(e) {
         e.preventDefault();
-        submitBtn.disabled = true;
-        submitBtn.innerText = 'Sincronizando...';
-        statusBox.className = 'status';
-        statusBox.style.display = 'none';
 
-        const formData = new FormData(form);
+        const box = document.getElementById('status-box');
+        const btn = document.getElementById('submit-btn');
+
+        if (!extractedMetrics) {
+            box.className = 'status error';
+            box.innerText = 'Por favor, selecciona primero un archivo CSV válido.';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = 'Conectando con Garmin...';
+        box.className = 'status info';
+        box.innerText = 'Autenticando en Garmin Connect y sincronizando métricas...';
 
         try {
             const res = await fetch('/.netlify/functions/sync', {
                 method: 'POST',
-                body: formData
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: document.getElementById('email').value.trim(),
+                    password: document.getElementById('password').value,
+                    metrics: extractedMetrics
+                })
             });
-            const data = await res.json();
 
-            if (data.success) {
-                statusBox.className = 'status success';
-                statusBox.innerHTML = `
-                    <strong>¡Sincronizado con éxito en Garmin Connect!</strong><br>
-                    📅 Fecha: ${data.data.fecha}<br>
-                    ⚖️ Peso: ${data.data.peso} kg<br>
-                    📉 Grasa: ${data.data.grasa}%<br>
-                    🫀 Grasa visceral: ${data.data.visceral}<br>
-                    💪 Músculo: ${data.data.musculo} kg<br>
-                    📊 IMC: ${data.data.bmi}<br>
-                    🔥 BMR: ${data.data.bmr} kcal
+            const result = await res.json();
+
+            if (result.success) {
+                box.className = 'status success';
+                box.innerHTML = `
+                    <strong>¡Sincronización completada con éxito!</strong><br>
+                    Los datos se han inyectado en Garmin Connect.<br>
+                    📅 ${extractedMetrics.displayDate} | ⚖️ ${extractedMetrics.weight} kg
                 `;
             } else {
-                throw new Error(data.error || 'Error desconocido.');
+                throw new Error(result.error || 'Respuesta no exitosa');
             }
         } catch (err) {
-            statusBox.className = 'status error';
-            statusBox.innerHTML = `<strong>Error:</strong> ${err.message}`;
+            box.className = 'status error';
+            box.innerHTML = `<strong>Fallo en la sincronización:</strong> ${err.message}`;
         } finally {
-            submitBtn.disabled = false;
-            submitBtn.innerText = 'Sincronizar con Garmin';
+            btn.disabled = false;
+            btn.innerText = 'Sincronizar con Garmin';
         }
     });
 </script>
