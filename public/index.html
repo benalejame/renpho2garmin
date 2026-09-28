@@ -212,7 +212,7 @@
             </label>
         </div>
 
-        <button type="button" id="toggle-auth" class="toggle-credentials-btn">Ocultar datos de acceso</button>
+        <button type="button" id="toggle-auth" class="toggle-credentials-btn">⚙️ Configurar credenciales de acceso</button>
         <button type="submit" id="btn-submit" class="btn-sync" disabled>Sube un archivo CSV primero</button>
     </form>
 
@@ -241,7 +241,7 @@
 
     let generatedFitBase64 = null;
 
-    // Cargar credenciales guardadas al iniciar
+    // Gestión de credenciales locales
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
     const rememberCheckbox = document.getElementById('remember-me');
@@ -255,7 +255,6 @@
         emailInput.value = savedEmail;
         passwordInput.value = savedPassword;
         rememberCheckbox.checked = true;
-        // Ocultar sección para limpiar la interfaz
         authPanel.classList.add('hidden');
         toggleAuthBtn.innerText = '⚙️ Configurar credenciales de acceso';
     } else {
@@ -291,6 +290,7 @@
                     rows.push(o);
                 }
 
+                // Obtener el registro más reciente con datos completos
                 let row = null;
                 for (let k = 0; k < rows.length; k++) {
                     let f = rows[k]['Porcentaje de grasa corporal(%)'] || rows[k]['Grasa corporal(%)'] || rows[k]['Body Fat(%)'];
@@ -308,9 +308,11 @@
                 let peso = parseFloat(g(['Peso(kg)', 'Weight(kg)']));
                 let bmi = parseFloat(g(['IMC', 'BMI']));
                 let grasa = parseFloat(g(['Porcentaje de grasa corporal(%)', 'Grasa corporal(%)', 'Body Fat(%)']));
-                let musculo = parseFloat(g(['Masa muscular esquelética(kg)', 'Masa muscular esqueletica(kg)', 'Masa muscular(kg)', 'Muscle Mass(kg)']));
-                let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Body Water(%)']));
-                let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Bone Mass(kg)']));
+                
+                // Priorizar siempre la Masa Muscular total para el cálculo y el estándar FIT
+                let musculo = parseFloat(g(['Masa muscular(kg)', 'Masa muscular', 'Muscle Mass(kg)', 'Muscle Mass', 'Masa muscular esquelética(kg)', 'Masa muscular esqueletica(kg)']));
+                let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Agua corporal(%)', 'Body Water(%)']));
+                let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Masa ósea', 'Bone Mass(kg)']));
                 let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 0, 10);
                 let metabolic = parseInt(g(['Edad metabólica', 'Edad metabolica', 'Metabolic Age']) || 0, 10);
 
@@ -323,21 +325,27 @@
                 let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
                 let timestamp = Math.floor((dt.getTime() - garminEpoch) / 1000);
 
+                // Cálculo de Clasificación Física (1 - 9)
                 let physique = 6;
                 if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
                     let mRatio = musculo / peso;
-                    if (grasa < 14) physique = (mRatio >= 0.76) ? 9 : ((mRatio >= 0.70) ? 8 : 7);
-                    else if (grasa <= 22) physique = (mRatio >= 0.75) ? 6 : ((mRatio >= 0.68) ? 5 : 4);
-                    else physique = (mRatio >= 0.72) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
+                    if (grasa < 14) {
+                        physique = (mRatio >= 0.76) ? 9 : ((mRatio >= 0.70) ? 8 : 7);
+                    } else if (grasa <= 22) {
+                        physique = (mRatio >= 0.75) ? 6 : ((mRatio >= 0.68) ? 5 : 4);
+                    } else {
+                        physique = (mRatio >= 0.72) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
+                    }
                 }
 
+                // Visualización de métricas
                 let grid = document.getElementById('metrics-card');
                 grid.style.display = 'grid';
                 grid.innerHTML = `
                     <div class="metric-item"><span>Peso:</span><strong>${peso} kg</strong></div>
                     <div class="metric-item"><span>IMC:</span><strong>${bmi}</strong></div>
                     <div class="metric-item"><span>Grasa corporal:</span><strong>${grasa}%</strong></div>
-                    <div class="metric-item"><span>Masa muscular esquelética:</span><strong>${musculo} kg</strong></div>
+                    <div class="metric-item"><span>Masa muscular:</span><strong>${musculo} kg</strong></div>
                     <div class="metric-item"><span>Agua corporal:</span><strong>${agua}%</strong></div>
                     <div class="metric-item"><span>Masa ósea:</span><strong>${hueso} kg</strong></div>
                     <div class="metric-item"><span>Grasa Visceral:</span><strong>${visceral}</strong></div>
@@ -345,6 +353,7 @@
                     <div class="metric-item"><span>Clasificación física:</span><strong>${physique}</strong></div>
                 `;
 
+                // Construcción de la estructura binaria .FIT de Garmin Index S2
                 generatedFitBase64 = buildFitBase64(timestamp, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique);
 
                 let btn = document.getElementById('btn-submit');
@@ -361,26 +370,47 @@
 
     function buildFitBase64(ts, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique) {
         let records = [];
+
+        // 1. File ID Message (Global 0)
         records.push(
             0x40, 0x00, 0x00, 0x00, 0x00, 0x05,
-            0x00, 0x01, 0x00, 0x01, 0x02, 0x84, 0x02, 0x02, 0x84, 0x03, 0x04, 0x8C, 0x04, 0x04, 0x86
+            0x00, 0x01, 0x00,
+            0x01, 0x02, 0x84,
+            0x02, 0x02, 0x84,
+            0x03, 0x04, 0x8C,
+            0x04, 0x04, 0x86
         );
         let tsB = new Uint8Array(new Uint32Array([ts]).buffer);
         records.push(0x00, 0x09, 0x01, 0x00, 0x7D, 0x09, 0xD2, 0x04, 0x00, 0x00, tsB[0], tsB[1], tsB[2], tsB[3]);
 
+        // 2. User Profile Message (Global 3)
         records.push(
             0x40, 0x00, 0x00, 0x03, 0x00, 0x07,
-            0x01, 0x01, 0x00, 0x02, 0x01, 0x02, 0x04, 0x02, 0x84, 0x03, 0x01, 0x02,
-            0x11, 0x01, 0x00, 0xFE, 0x02, 0x84, 0x16, 0x02, 0x84
+            0x01, 0x01, 0x00,
+            0x02, 0x01, 0x02,
+            0x04, 0x02, 0x84,
+            0x03, 0x01, 0x02,
+            0x11, 0x01, 0x00,
+            0xFE, 0x02, 0x84,
+            0x16, 0x02, 0x84
         );
         let wProf = new Uint8Array(new Uint16Array([Math.round(peso * 10)]).buffer);
         records.push(0x00, 0x01, 0x28, wProf[0], wProf[1], 0x64, 0x5A, 0x00, 0x00, 0x00, 0x00);
 
+        // 3. Weight Scale Message (Global 30)
         records.push(
             0x40, 0x00, 0x00, 0x1E, 0x00, 0x0B,
-            0xFD, 0x04, 0x86, 0x0C, 0x02, 0x84, 0x00, 0x02, 0x84, 0x01, 0x02, 0x84,
-            0x02, 0x02, 0x84, 0x05, 0x02, 0x84, 0x04, 0x02, 0x84, 0x0A, 0x01, 0x02,
-            0x08, 0x01, 0x02, 0x0B, 0x01, 0x02, 0x0D, 0x02, 0x84
+            0xFD, 0x04, 0x86,
+            0x0C, 0x02, 0x84,
+            0x00, 0x02, 0x84,
+            0x01, 0x02, 0x84,
+            0x02, 0x02, 0x84,
+            0x05, 0x02, 0x84,
+            0x04, 0x02, 0x84,
+            0x0A, 0x01, 0x02,
+            0x08, 0x01, 0x02,
+            0x0B, 0x01, 0x02,
+            0x0D, 0x02, 0x84
         );
         let wVal = new Uint8Array(new Uint16Array([Math.round(peso * 100)]).buffer);
         let fVal = new Uint8Array(new Uint16Array([Math.round(grasa * 100)]).buffer);
@@ -429,7 +459,6 @@
             return;
         }
 
-        // Guardar o eliminar en localStorage según el estado del checkbox
         if (rememberCheckbox.checked) {
             localStorage.setItem('garmin_email', email);
             localStorage.setItem('garmin_password', password);
@@ -455,7 +484,6 @@
             let data = await res.json();
             if (res.ok && data.success) {
                 showStatus("¡Medición sincronizada con éxito en Garmin Connect!", "success");
-                // Si están guardadas, ocultar el panel para dejar la interfaz limpia
                 if (rememberCheckbox.checked) {
                     authPanel.classList.add('hidden');
                     toggleAuthBtn.innerText = '⚙️ Configurar credenciales de acceso';
