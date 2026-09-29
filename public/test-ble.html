@@ -3,96 +3,149 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Test BLE Renpho R-MSC02</title>
+    <title>Diagnóstico BLE Renpho R-MSC02 (v3)</title>
     <style>
-        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
-        button { padding: 15px 25px; font-size: 16px; background: #0284c7; color: white; border: none; border-radius: 8px; cursor: pointer; }
-        pre { background: #1e293b; padding: 15px; border-radius: 8px; text-align: left; font-size: 13px; max-height: 380px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        body { font-family: sans-serif; background: #0f172a; color: white; padding: 16px; text-align: center; }
+        button { padding: 14px 20px; font-size: 15px; background: #0284c7; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 6px; }
+        pre { background: #1e293b; padding: 12px; border-radius: 8px; text-align: left; font-size: 12px; max-height: 420px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .version { color: #38bdf8; font-weight: bold; margin-bottom: 10px; font-size: 14px; }
     </style>
 </head>
 <body>
-    <h2>Test de Lectura Renpho R-MSC02</h2>
-    <p>1. Da un toque a la báscula para encenderla.<br>2. Pulsa el botón y selecciónala.</p>
-    <button id="btn-scan">Conectar con la Báscula</button>
-    <pre id="log">Esperando...</pre>
+    <h2>Diagnóstico Renpho R-MSC02</h2>
+    <div class="version">Versión del Script: 3.0</div>
+    <p style="font-size: 13px; color: #94a3b8;">Enciende la báscula y pulsa uno de los dos métodos:</p>
+    
+    <button id="btn-advertisement">Método 1: Escanear Anuncios (Sin GATT)</button>
+    <button id="btn-gatt">Método 2: Conexión GATT Profunda</button>
+    
+    <pre id="log">Esperando acción...</pre>
 
     <script>
         const logEl = document.getElementById('log');
-        function log(msg) { logEl.innerText += "\n" + msg; }
+        function log(msg) { 
+            logEl.innerText += "\n" + msg; 
+            logEl.scrollTop = logEl.scrollHeight;
+        }
 
-        // Lista exhaustiva de servicios estándar y propietarios de Renpho / Yolanda
-        const KNOWN_SERVICES = [
-            'weight_scale',           // 0x181d
-            'body_composition',       // 0x181b
-            0x181d, 0x181b,
-            0xffe0, 0xfff0, 0xfa90, 0xfd00, 0xfee7,
+        // Catálogo exhaustivo de UUIDs de básculas bioimpedancia (Yolanda, Senssun, Chipsea, SIG)
+        const SERVICES_LIST = [
+            0x181d, 0x181b, 0x180a, 0x1800, 0x1801,
+            0xffe0, 0xfff0, 0xfa90, 0xfd00, 0xfee7, 0xfeaa, 0x1000, 0x2000,
             '0000ffe0-0000-1000-8000-00805f9b34fb',
             '0000fff0-0000-1000-8000-00805f9b34fb',
             '0000fa90-0000-1000-8000-00805f9b34fb',
-            '0000fd00-0000-1000-8000-00805f9b34fb'
+            '0000fee7-0000-1000-8000-00805f9b34fb',
+            '0000181d-0000-1000-8000-00805f9b34fb',
+            '0000181b-0000-1000-8000-00805f9b34fb',
+            '0000fff0-0000-1000-8000-00805f9b34fb',
+            '0000fff1-0000-1000-8000-00805f9b34fb',
+            '0000ffe1-0000-1000-8000-00805f9b34fb',
+            '49535343-fe7d-4ae5-8fa9-9fafd205e455' // Microchip / Yolanda alternate
         ];
 
-        document.getElementById('btn-scan').addEventListener('click', async () => {
-            logEl.innerText = "Iniciando escaneo Bluetooth...";
+        // MÉTODO 1: Escucha pasiva de publicidad BLE
+        document.getElementById('btn-advertisement').addEventListener('click', async () => {
+            logEl.innerText = "[MÉTODO 1] Escuchando paquetes de anuncio...";
             try {
                 const device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true,
-                    optionalServices: KNOWN_SERVICES
+                    acceptAllDevices: true
                 });
 
-                log(`Dispositivo: ${device.name || 'R-MSC02'} (${device.id})`);
-                log("Conectando al servidor GATT...");
-                const server = await device.gatt.connect();
+                log(`Dispositivo: ${device.name || 'Sin nombre'} (${device.id})`);
+                log("Activando observador de anuncios...");
 
-                log("Buscando servicios reconocidos...");
-                let foundServices = [];
-                try {
-                    foundServices = await server.getPrimaryServices();
-                } catch (e) {
-                    log("Aviso: getPrimaryServices() global falló, probando servicios individuales...");
-                }
-
-                if (foundServices.length === 0) {
-                    for (let s of KNOWN_SERVICES) {
-                        try {
-                            const srv = await server.getPrimaryService(s);
-                            foundServices.push(srv);
-                        } catch (err) {}
-                    }
-                }
-
-                if (foundServices.length === 0) {
-                    log("ERROR: Ningún servicio de la lista opcional coincidió.");
+                if (!device.watchAdvertisements) {
+                    log("Aviso: Tu versión de Chrome no soporta 'watchAdvertisements'. Pasa al Método 2.");
                     return;
                 }
 
-                for (const service of foundServices) {
-                    log(`\n[Servicio detectado]: ${service.uuid}`);
-                    try {
-                        const characteristics = await service.getCharacteristics();
-                        for (const char of characteristics) {
-                            log(` ➔ Característica: ${char.uuid} | Propiedades: ${JSON.stringify(char.properties)}`);
-                            
-                            // Si permite notificaciones o indicaciones, nos suscribimos
-                            if (char.properties.notify || char.properties.indicate) {
-                                await char.startNotifications();
-                                char.addEventListener('characteristicvaluechanged', (e) => {
-                                    const val = new Uint8Array(e.target.value.buffer);
-                                    const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                                    log(`\n>>> DATOS [${char.uuid.slice(4,8)}]: ${hex}`);
-                                });
-                                log(`   (Suscrito a notificaciones en ${char.uuid})`);
-                            }
+                await device.watchAdvertisements();
+                device.addEventListener('advertisementreceived', (event) => {
+                    log(`\n[ANUNCIO RECIBIDO] RSSI: ${event.rssi}`);
+                    if (event.manufacturerData) {
+                        for (const [id, data] of event.manufacturerData) {
+                            const hex = Array.from(new Uint8Array(data.buffer)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                            log(` ➔ Fabricante [0x${id.toString(16)}]: ${hex}`);
                         }
-                    } catch (charErr) {
-                        log(` Error al listar características de ${service.uuid}: ${charErr.message}`);
+                    }
+                    if (event.serviceData) {
+                        for (const [uuid, data] of event.serviceData) {
+                            const hex = Array.from(new Uint8Array(data.buffer)).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                            log(` ➔ ServiceData [${uuid}]: ${hex}`);
+                        }
+                    }
+                });
+                log("Observador activo. Súbete a la báscula para que emita...");
+            } catch (err) {
+                log(`ERROR M1: ${err.message}`);
+            }
+        });
+
+        // MÉTODO 2: Conexión GATT directa
+        document.getElementById('btn-gatt').addEventListener('click', async () => {
+            logEl.innerText = "[MÉTODO 2] Iniciando conexión GATT...";
+            try {
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: SERVICES_LIST
+                });
+
+                log(`Dispositivo: ${device.name} (${device.id})`);
+                log("Conectando con el servidor GATT...");
+                const server = await device.gatt.connect();
+                log("Conexión GATT establecida.");
+
+                let services = [];
+                for (let s of SERVICES_LIST) {
+                    try {
+                        let srv = await server.getPrimaryService(s);
+                        if (srv) {
+                            services.push(srv);
+                            log(`✓ Servicio encontrado: ${srv.uuid}`);
+                        }
+                    } catch (e) {}
+                }
+
+                if (services.length === 0) {
+                    // Intento genérico final
+                    try {
+                        services = await server.getPrimaryServices();
+                        log(`✓ getPrimaryServices() devolvió ${services.length} servicios.`);
+                    } catch (e) {
+                        log(`Fallo al leer servicios: ${e.message}`);
                     }
                 }
 
-                log("\nListo. Súbete descalzo a la báscula y espera a que fije el peso.");
+                if (services.length === 0) {
+                    log("ERROR: La báscula no expone ningún servicio estándar o conocido bajo Web Bluetooth.");
+                    return;
+                }
+
+                for (let service of services) {
+                    try {
+                        const chars = await service.getCharacteristics();
+                        for (let ch of chars) {
+                            log(`  • Característica: ${ch.uuid}`);
+                            if (ch.properties.notify || ch.properties.indicate) {
+                                await ch.startNotifications();
+                                ch.addEventListener('characteristicvaluechanged', (e) => {
+                                    const val = new Uint8Array(e.target.value.buffer);
+                                    const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                                    log(`\n>>> LECTURA [${ch.uuid.slice(4,8)}]: ${hex}`);
+                                });
+                                log(`    (Suscrito a notificaciones)`);
+                            }
+                        }
+                    } catch (chErr) {
+                        log(`  Error en características: ${chErr.message}`);
+                    }
+                }
+
+                log("\nEsperando medición... Súbete descalzo a la báscula.");
 
             } catch (err) {
-                log(`\nERROR GENERAL: ${err.message}`);
+                log(`ERROR M2: ${err.message}`);
             }
         });
     </script>
