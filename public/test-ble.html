@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+Ôªø<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -7,56 +7,92 @@
     <style>
         body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
         button { padding: 15px 25px; font-size: 16px; background: #0284c7; color: white; border: none; border-radius: 8px; cursor: pointer; }
-        pre { background: #1e293b; padding: 15px; border-radius: 8px; text-align: left; font-size: 13px; max-height: 300px; overflow-y: auto; }
+        pre { background: #1e293b; padding: 15px; border-radius: 8px; text-align: left; font-size: 13px; max-height: 380px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
     </style>
 </head>
 <body>
     <h2>Test de Lectura Renpho R-MSC02</h2>
-    <p>1. Da un toque a la b·scula con el pie para que se encienda la pantalla.<br>2. Pulsa el botÛn y selecciÛnala en la ventana emergente.</p>
-    <button id="btn-scan">Conectar con la B·scula</button>
+    <p>1. Da un toque a la b√°scula para encenderla.<br>2. Pulsa el bot√≥n y selecci√≥nala.</p>
+    <button id="btn-scan">Conectar con la B√°scula</button>
     <pre id="log">Esperando...</pre>
 
     <script>
         const logEl = document.getElementById('log');
         function log(msg) { logEl.innerText += "\n" + msg; }
 
+        // Lista exhaustiva de servicios est√°ndar y propietarios de Renpho / Yolanda
+        const KNOWN_SERVICES = [
+            'weight_scale',           // 0x181d
+            'body_composition',       // 0x181b
+            0x181d, 0x181b,
+            0xffe0, 0xfff0, 0xfa90, 0xfd00, 0xfee7,
+            '0000ffe0-0000-1000-8000-00805f9b34fb',
+            '0000fff0-0000-1000-8000-00805f9b34fb',
+            '0000fa90-0000-1000-8000-00805f9b34fb',
+            '0000fd00-0000-1000-8000-00805f9b34fb'
+        ];
+
         document.getElementById('btn-scan').addEventListener('click', async () => {
             logEl.innerText = "Iniciando escaneo Bluetooth...";
             try {
-                // Solicitar cualquier dispositivo que anuncie servicios Yolanda/Renpho habituales
                 const device = await navigator.bluetooth.requestDevice({
                     acceptAllDevices: true,
-                    optionalServices: [
-                        0xffe0, 0xfff0,
-                        '0000ffe0-0000-1000-8000-00805f9b34fb',
-                        '0000fff0-0000-1000-8000-00805f9b34fb'
-                    ]
+                    optionalServices: KNOWN_SERVICES
                 });
 
-                log(`Dispositivo seleccionado: ${device.name || 'Sin nombre'} (${device.id})`);
+                log(`Dispositivo: ${device.name || 'R-MSC02'} (${device.id})`);
                 log("Conectando al servidor GATT...");
                 const server = await device.gatt.connect();
 
-                log("Buscando servicios...");
-                const services = await server.getPrimaryServices();
-                for (const service of services) {
-                    log(`Servicio encontrado: ${service.uuid}`);
-                    const characteristics = await service.getCharacteristics();
-                    for (const char of characteristics) {
-                        log(` - CaracterÌstica: ${char.uuid} (Notificar: ${char.properties.notify})`);
-                        if (char.properties.notify) {
-                            await char.startNotifications();
-                            char.addEventListener('characteristicvaluechanged', (e) => {
-                                const val = new Uint8Array(e.target.value.buffer);
-                                const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                                log(`DATOS RECIBIDOS: [${hex}]`);
-                            });
-                            log(" -> Suscrito a notificaciones con Èxito. S˙bete descalzo a la b·scula.");
-                        }
+                log("Buscando servicios reconocidos...");
+                let foundServices = [];
+                try {
+                    foundServices = await server.getPrimaryServices();
+                } catch (e) {
+                    log("Aviso: getPrimaryServices() global fall√≥, probando servicios individuales...");
+                }
+
+                if (foundServices.length === 0) {
+                    for (let s of KNOWN_SERVICES) {
+                        try {
+                            const srv = await server.getPrimaryService(s);
+                            foundServices.push(srv);
+                        } catch (err) {}
                     }
                 }
+
+                if (foundServices.length === 0) {
+                    log("ERROR: Ning√∫n servicio de la lista opcional coincidi√≥.");
+                    return;
+                }
+
+                for (const service of foundServices) {
+                    log(`\n[Servicio detectado]: ${service.uuid}`);
+                    try {
+                        const characteristics = await service.getCharacteristics();
+                        for (const char of characteristics) {
+                            log(` ‚ûî Caracter√≠stica: ${char.uuid} | Propiedades: ${JSON.stringify(char.properties)}`);
+                            
+                            // Si permite notificaciones o indicaciones, nos suscribimos
+                            if (char.properties.notify || char.properties.indicate) {
+                                await char.startNotifications();
+                                char.addEventListener('characteristicvaluechanged', (e) => {
+                                    const val = new Uint8Array(e.target.value.buffer);
+                                    const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                                    log(`\n>>> DATOS [${char.uuid.slice(4,8)}]: ${hex}`);
+                                });
+                                log(`   (Suscrito a notificaciones en ${char.uuid})`);
+                            }
+                        }
+                    } catch (charErr) {
+                        log(` Error al listar caracter√≠sticas de ${service.uuid}: ${charErr.message}`);
+                    }
+                }
+
+                log("\nListo. S√∫bete descalzo a la b√°scula y espera a que fije el peso.");
+
             } catch (err) {
-                log(`ERROR: ${err.message}`);
+                log(`\nERROR GENERAL: ${err.message}`);
             }
         });
     </script>
