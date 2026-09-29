@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test BLE Renpho R-MSC02</title>
+    <style>
+        body { font-family: sans-serif; background: #0f172a; color: white; padding: 20px; text-align: center; }
+        button { padding: 15px 25px; font-size: 16px; background: #0284c7; color: white; border: none; border-radius: 8px; cursor: pointer; }
+        pre { background: #1e293b; padding: 15px; border-radius: 8px; text-align: left; font-size: 13px; max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h2>Test de Lectura Renpho R-MSC02</h2>
+    <p>1. Da un toque a la báscula con el pie para que se encienda la pantalla.<br>2. Pulsa el botón y selecciónala en la ventana emergente.</p>
+    <button id="btn-scan">Conectar con la Báscula</button>
+    <pre id="log">Esperando...</pre>
+
+    <script>
+        const logEl = document.getElementById('log');
+        function log(msg) { logEl.innerText += "\n" + msg; }
+
+        document.getElementById('btn-scan').addEventListener('click', async () => {
+            logEl.innerText = "Iniciando escaneo Bluetooth...";
+            try {
+                // Solicitar cualquier dispositivo que anuncie servicios Yolanda/Renpho habituales
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [
+                        0xffe0, 0xfff0,
+                        '0000ffe0-0000-1000-8000-00805f9b34fb',
+                        '0000fff0-0000-1000-8000-00805f9b34fb'
+                    ]
+                });
+
+                log(`Dispositivo seleccionado: ${device.name || 'Sin nombre'} (${device.id})`);
+                log("Conectando al servidor GATT...");
+                const server = await device.gatt.connect();
+
+                log("Buscando servicios...");
+                const services = await server.getPrimaryServices();
+                for (const service of services) {
+                    log(`Servicio encontrado: ${service.uuid}`);
+                    const characteristics = await service.getCharacteristics();
+                    for (const char of characteristics) {
+                        log(` - Característica: ${char.uuid} (Notificar: ${char.properties.notify})`);
+                        if (char.properties.notify) {
+                            await char.startNotifications();
+                            char.addEventListener('characteristicvaluechanged', (e) => {
+                                const val = new Uint8Array(e.target.value.buffer);
+                                const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                                log(`DATOS RECIBIDOS: [${hex}]`);
+                            });
+                            log(" -> Suscrito a notificaciones con éxito. Súbete descalzo a la báscula.");
+                        }
+                    }
+                }
+            } catch (err) {
+                log(`ERROR: ${err.message}`);
+            }
+        });
+    </script>
+</body>
+</html>
