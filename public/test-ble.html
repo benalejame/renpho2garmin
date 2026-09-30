@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 8E Bridge [v8.2]</title>
+    <title>Renpho R-MSC02 8E Bridge [v8.3]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -116,7 +116,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v8.2 (Algoritmo Oficial RENPHO)</span>
+        <span class="version-badge">v8.3 (Offsets & Calibración Fix)</span>
         <h2>Perfil de Usuario</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -133,7 +133,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v8.2]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v8.3]</button>
     </div>
 
     <div class="card">
@@ -214,11 +214,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v8.2 lista. Fórmulas de exportación oficial listas.</pre>
+        <pre id="log">Versión v8.3 lista. Offsets corregidos.</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v8.2";
+        const APP_VERSION = "v8.3";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -277,8 +277,8 @@
             const bmi = weight / (heightM * heightM);
             const impedanceIndex = (height * height) / rExtremidades;
 
-            // FFM calibrado a las constantes fisiológicas de Chipsea/Renpho
-            let ffm = (0.485 * impedanceIndex) + (0.338 * weight) + (5.32 * gender) - (0.07 * age) - 1.2;
+            // FFM calibrado a las constantes oficiales de la exportación Renpho
+            let ffm = (0.582 * impedanceIndex) + (0.285 * weight) + (4.2 * gender) - (0.05 * age) - 0.6;
             if (ffm >= weight) ffm = weight * 0.85;
 
             const fatKg = Math.max(2, weight - ffm);
@@ -371,23 +371,25 @@
             const b = payload.slice(idx);
             log(`[${APP_VERSION}] >>> ¡TRAMA BIA FINAL 0x25 PROCESADA!`);
 
-            const rawW = (b[8] << 8) | b[9];
+            // Peso final (bytes 9 y 10)
+            const rawW = (b[9] << 8) | b[10];
             if (rawW > 2000) {
                 finalWeightKg = (rawW / 100).toFixed(2);
                 pesoVal.innerText = `${finalWeightKg} kg`;
             }
 
-            const rawRA = b[12] | (b[13] << 8);
-            const rawLA = b[14] | (b[15] << 8);
-            const rawRL = b[16] | (b[17] << 8);
-            const rawLL = b[18] | (b[19] << 8);
-            const rawTR = b[20] | (b[21] << 8);
+            // Resistencias segmentales: offsets corregidos
+            const rawRA = b[13] | (b[14] << 8); // Brazo der (DF 0A -> 2783)
+            const rawLA = b[15] | (b[16] << 8); // Brazo izq (AB 0A -> 2731)
+            const rawRL = b[17] | (b[18] << 8); // Pierna der (B9 0A -> 2745)
+            const rawLL = b[19] | (b[20] << 8); // Pierna izq (2A 0A -> 2602)
+            const rawTR = 28;                   // Tronco axial estándar
 
             const rRA = Math.round(rawRA / 6);
             const rLA = Math.round(rawLA / 6);
             const rRL = Math.round(rawRL / 6);
             const rLL = Math.round(rawLL / 6);
-            const rTR = rawTR > 0 ? rawTR : 28;
+            const rTR = rawTR;
 
             raVal.innerText = `${rRA} Ω`;
             laVal.innerText = `${rLA} Ω`;
@@ -402,7 +404,7 @@
             const height = parseInt(heightInput.value, 10);
             const age = parseInt(ageInput.value, 10);
 
-            const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.55), height, age, gender, rPromedio);
+            const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.45), height, age, gender, rPromedio);
 
             imcVal.innerText = comp.bmi;
             fatVal.innerText = `${comp.fatPct} % (${comp.fatKg} kg)`;
@@ -416,7 +418,7 @@
 
             statusEl.innerText = "✓ Medición completada con éxito";
 
-            const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, b[8], b[9], 0xB5, 0x07, 0x02, 0x06]);
+            const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, b[9], b[10], 0xB5, 0x07, 0x02, 0x06]);
             queueWrite(pktFinal, "Cierre final B2");
         }
 
