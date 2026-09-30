@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 Bridge [v6.5]</title>
+    <title>Renpho R-MSC02 8-Electrodos [v6.7]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -67,13 +67,6 @@
             margin-top: 8px;
         }
         button:active { background: #0369a1; }
-        .btn-secundario {
-            background: #334155;
-            padding: 10px;
-            font-size: 13px;
-            margin-top: 8px;
-        }
-        .btn-secundario:active { background: #1e293b; }
         .display-val {
             display: flex;
             justify-content: space-around;
@@ -82,15 +75,17 @@
         }
         .metric-title { font-size: 12px; color: #94a3b8; letter-spacing: 0.5px; }
         .metric-num { font-size: 28px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
-        .extra-metrics {
+        .segmental-grid {
             margin-top: 14px;
             border-top: 1px solid #334155;
             padding-top: 10px;
-            display: flex;
-            justify-content: space-between;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
             text-align: center;
         }
-        .extra-val { font-size: 18px; font-weight: bold; color: #f1f5f9; }
+        .grid-item { background: #0f172a; padding: 6px; border-radius: 6px; border: 1px solid #1e293b; }
+        .grid-val { font-size: 15px; font-weight: bold; color: #f1f5f9; }
         pre {
             background: #020617;
             padding: 12px;
@@ -112,8 +107,8 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v6.5</span>
-        <h2>Configuración de Usuario</h2>
+        <span class="version-badge">v6.7 (8 Electrodos)</span>
+        <h2>Perfil Segmental</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
             <select id="gender">
@@ -129,8 +124,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v6.5]</button>
-        <button id="btn-forzar" class="btn-secundario">Forzar Envío Perfil BIA</button>
+        <button id="btn-conectar">Conectar e Iniciar [v6.7]</button>
     </div>
 
     <div class="card">
@@ -140,22 +134,34 @@
                 <div class="metric-num" id="peso-val">--.-- kg</div>
             </div>
             <div>
-                <div class="metric-title">IMPEDANCIA</div>
+                <div class="metric-title">IMPEDANCIA BASE</div>
                 <div class="metric-num" id="imp-val">-- Ω</div>
             </div>
         </div>
-        <div class="extra-metrics">
-            <div>
-                <div class="metric-title">GRASA</div>
-                <div class="extra-val" id="fat-val">--.- %</div>
+        <div class="segmental-grid">
+            <div class="grid-item">
+                <div class="metric-title">GRASA TOTAL</div>
+                <div class="grid-val" id="fat-val">--.- %</div>
             </div>
-            <div>
-                <div class="metric-title">AGUA</div>
-                <div class="extra-val" id="water-val">--.- %</div>
+            <div class="grid-item">
+                <div class="metric-title">AGUA TOTAL</div>
+                <div class="grid-val" id="water-val">--.- %</div>
             </div>
-            <div>
+            <div class="grid-item">
                 <div class="metric-title">MÚSCULO</div>
-                <div class="extra-val" id="muscle-val">--.- kg</div>
+                <div class="grid-val" id="muscle-val">--.- kg</div>
+            </div>
+            <div class="grid-item">
+                <div class="metric-title">BRAZO DER.</div>
+                <div class="grid-val" id="ra-val">-- Ω</div>
+            </div>
+            <div class="grid-item">
+                <div class="metric-title">TRONCO</div>
+                <div class="grid-val" id="tr-val">-- Ω</div>
+            </div>
+            <div class="grid-item">
+                <div class="metric-title">BRAZO IZQ.</div>
+                <div class="grid-val" id="la-val">-- Ω</div>
             </div>
         </div>
         <div id="status" style="text-align: center; font-size: 13px; color: #94a3b8; margin-top: 10px;">
@@ -164,11 +170,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v6.5 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v6.7 (8 Electrodos) lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v6.5";
+        const APP_VERSION = "v6.7";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -176,6 +182,9 @@
         const fatVal = document.getElementById('fat-val');
         const waterVal = document.getElementById('water-val');
         const muscleVal = document.getElementById('muscle-val');
+        const raVal = document.getElementById('ra-val');
+        const trVal = document.getElementById('tr-val');
+        const laVal = document.getElementById('la-val');
 
         const genderInput = document.getElementById('gender');
         const heightInput = document.getElementById('height');
@@ -208,35 +217,11 @@
             return new Uint8Array(arr);
         }
 
-        function getNativeChipseaHandshake() {
-            return new Uint8Array([0xFD, 0x37, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38]);
+        // Trama nativa de activación para modelos segmentales (8 electrodos) Chipsea/Yolanda
+        // 0x55 0xAA 0x2C + longitud(8) + ID_usr(1) + sexo + edad + altura + atleta(0) + unidad_kg(0) + con_barra(1)
+        function build8ElectrodeProfile(gender, age, height) {
+            return buildChecksum([0x55, 0xAA, 0x2C, 0x00, 0x08, 0x01, gender, age, height, 0x00, 0x00, 0x01]);
         }
-
-        function buildChipseaProfile(gender, age, height) {
-            return buildChecksum([0x55, 0xAA, 0x11, 0x00, 0x05, 0x01, gender, age, height, 0x00]);
-        }
-
-        async function triggerProfileSend() {
-            if (!writeCharGlobal) {
-                log(`[${APP_VERSION}] Báscula no conectada.`);
-                return;
-            }
-            const gender = parseInt(genderInput.value, 10);
-            const height = parseInt(heightInput.value, 10);
-            const age = parseInt(ageInput.value, 10);
-
-            try {
-                const pkt = buildChipseaProfile(gender, age, height);
-                await writeCharGlobal.writeValue(pkt);
-                profileSent = true;
-                statusEl.innerText = "Perfil BIA inyectado. Analizando...";
-                log(`[${APP_VERSION}] Perfil 0x11 enviado: ${Array.from(pkt).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
-            } catch (err) {
-                log(`[${APP_VERSION}] Error envío: ${err.message}`);
-            }
-        }
-
-        document.getElementById('btn-forzar').addEventListener('click', triggerProfileSend);
 
         function calculateBodyComposition(weight, height, age, gender, r) {
             const heightM = height / 100;
@@ -295,15 +280,14 @@
 
                 await notifyChar.startNotifications();
 
+                // Handshake inicial
                 try {
-                    await writeCharGlobal.writeValue(getNativeChipseaHandshake());
-                    log(`[${APP_VERSION}] Handshake 0xFD enviado.`);
-                } catch (e) {
-                    log(`[${APP_VERSION}] Fallo handshake: ${e.message}`);
-                }
+                    await writeCharGlobal.writeValue(new Uint8Array([0xFD, 0x37, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38]));
+                    log(`[${APP_VERSION}] Handshake enviado.`);
+                } catch (e) {}
 
-                statusEl.innerText = "Súbete descalzo a la báscula";
-                log(`[${APP_VERSION}] Esperando peso estable (tolerancia adaptativa)...`);
+                statusEl.innerText = "Sujeta la barra y súbete descalzo";
+                log(`[${APP_VERSION}] Esperando estabilidad con barra de 8 electrodos...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -314,21 +298,13 @@
 
                     log(`[RX]: ${hex}`);
 
+                    // Paquete continuo 0x21
                     if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
                         finalWeightKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${finalWeightKg} kg`;
 
-                        const impDirect = (bytes[6] << 8) | bytes[7];
-                        if (impDirect > 0) {
-                            impVal.innerText = `${impDirect} Ω`;
-                            const comp = calculateBodyComposition(parseFloat(finalWeightKg), height, age, gender, impDirect);
-                            fatVal.innerText = `${comp.fat} %`;
-                            waterVal.innerText = `${comp.water} %`;
-                            muscleVal.innerText = `${comp.muscle} kg`;
-                        }
-
-                        // Verificación de estabilidad con tolerancia ampliada a +-30
+                        // Estabilidad
                         if (rawWeight > 2000) {
                             if (Math.abs(rawWeight - lastRawWeight) <= 30) {
                                 stableCount++;
@@ -339,27 +315,54 @@
 
                             if (stableCount >= 3 && !profileSent) {
                                 profileSent = true;
-                                statusEl.innerText = "Estabilidad detectada. Enviando perfil...";
-                                log(`[${APP_VERSION}] Peso estabilizado (${finalWeightKg} kg). Inyectando...`);
-                                await triggerProfileSend();
+                                statusEl.innerText = "Peso fijado. Escaneando los 8 electrodos...";
+                                log(`[${APP_VERSION}] Peso fijo (${finalWeightKg} kg). Inyectando perfil 8-electrodos (0x2C)...`);
+
+                                try {
+                                    const pkt = build8ElectrodeProfile(gender, age, height);
+                                    await writeCharGlobal.writeValue(pkt);
+                                    log(`[${APP_VERSION}] Perfil 8E enviado: ${Array.from(pkt).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
+                                } catch (errW) {
+                                    log(`[${APP_VERSION}] Error escritura 8E: ${errW.message}`);
+                                }
                             }
                         }
                     } 
+                    // TRAMAS DE 8 ELECTRODOS / SEGMENTALES (0x2C, 0x2D, 0x2E, 0x32, etc.)
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA) {
-                        log(`[${APP_VERSION}] >>> ¡TRAMA BIA / ESPECIAL!: ${hex}`);
-                        statusEl.innerText = "✓ Medición BIA completada";
+                        log(`[${APP_VERSION}] >>> ¡TRAMA SEGMENTAL DETECTADA!: ${hex}`);
+                        statusEl.innerText = "✓ Medición segmental de 8 electrodos completada";
 
-                        for (let i = 4; i < bytes.length - 2; i++) {
-                            const val = (bytes[i] << 8) | bytes[i+1];
-                            if (val >= 350 && val <= 1150) {
-                                impVal.innerText = `${val} Ω`;
-                                log(`[${APP_VERSION}] -> Impedancia: ${val} Ω`);
+                        // Si la trama es larga (>= 16 bytes), contiene los valores de tronco y extremidades
+                        if (bytes.length >= 16) {
+                            // Estructura segmental típica: [Brazo Der, Tronco, Brazo Izq, Pierna Der, Pierna Izq]
+                            const imp1 = (bytes[6] << 8) | bytes[7];
+                            const imp2 = (bytes[8] << 8) | bytes[9];
+                            const imp3 = (bytes[10] << 8) | bytes[11];
+                            const impGlobal = (bytes[4] << 8) | bytes[5];
 
-                                const comp = calculateBodyComposition(parseFloat(finalWeightKg || 72.8), height, age, gender, val);
-                                fatVal.innerText = `${comp.fat} %`;
-                                waterVal.innerText = `${comp.water} %`;
-                                muscleVal.innerText = `${comp.muscle} kg`;
-                                break;
+                            if (impGlobal > 200) impVal.innerText = `${impGlobal} Ω`;
+                            if (imp1 > 100) raVal.innerText = `${imp1} Ω`;
+                            if (imp2 > 10)  trVal.innerText = `${imp2} Ω`;
+                            if (imp3 > 100) laVal.innerText = `${imp3} Ω`;
+
+                            const rRef = impGlobal > 200 ? impGlobal : 500;
+                            const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.0), height, age, gender, rRef);
+                            fatVal.innerText = `${comp.fat} %`;
+                            waterVal.innerText = `${comp.water} %`;
+                            muscleVal.innerText = `${comp.muscle} kg`;
+                        } else {
+                            // Trama corta de bioimpedancia estándar
+                            for (let i = 4; i < bytes.length - 2; i++) {
+                                const val = (bytes[i] << 8) | bytes[i+1];
+                                if (val >= 350 && val <= 1150) {
+                                    impVal.innerText = `${val} Ω`;
+                                    const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.0), height, age, gender, val);
+                                    fatVal.innerText = `${comp.fat} %`;
+                                    waterVal.innerText = `${comp.water} %`;
+                                    muscleVal.innerText = `${comp.muscle} kg`;
+                                    break;
+                                }
                             }
                         }
                     }
