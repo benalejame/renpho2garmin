@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 Bridge [v6.2]</title>
+    <title>Renpho R-MSC02 Bridge [v6.3]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -74,7 +74,16 @@
             margin-top: 10px;
         }
         .metric-title { font-size: 12px; color: #94a3b8; letter-spacing: 0.5px; }
-        .metric-num { font-size: 30px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
+        .metric-num { font-size: 28px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
+        .extra-metrics {
+            margin-top: 14px;
+            border-top: 1px solid #334155;
+            padding-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            text-align: center;
+        }
+        .extra-val { font-size: 18px; font-weight: bold; color: #f1f5f9; }
         pre {
             background: #020617;
             padding: 12px;
@@ -96,7 +105,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v6.2</span>
+        <span class="version-badge">v6.3</span>
         <h2>Configuración de Usuario</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -113,7 +122,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v6.2]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v6.3]</button>
     </div>
 
     <div class="card">
@@ -123,8 +132,22 @@
                 <div class="metric-num" id="peso-val">--.-- kg</div>
             </div>
             <div>
-                <div class="metric-title">IMPEDANCIA (BIA)</div>
+                <div class="metric-title">IMPEDANCIA</div>
                 <div class="metric-num" id="imp-val">-- Ω</div>
+            </div>
+        </div>
+        <div class="extra-metrics">
+            <div>
+                <div class="metric-title">GRASA</div>
+                <div class="extra-val" id="fat-val">--.- %</div>
+            </div>
+            <div>
+                <div class="metric-title">AGUA</div>
+                <div class="extra-val" id="water-val">--.- %</div>
+            </div>
+            <div>
+                <div class="metric-title">MÚSCULO</div>
+                <div class="extra-val" id="muscle-val">--.- kg</div>
             </div>
         </div>
         <div id="status" style="text-align: center; font-size: 13px; color: #94a3b8; margin-top: 10px;">
@@ -133,15 +156,18 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v6.2 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v6.3 lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v6.2";
+        const APP_VERSION = "v6.3";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
         const impVal = document.getElementById('imp-val');
+        const fatVal = document.getElementById('fat-val');
+        const waterVal = document.getElementById('water-val');
+        const muscleVal = document.getElementById('muscle-val');
 
         const genderInput = document.getElementById('gender');
         const heightInput = document.getElementById('height');
@@ -165,14 +191,45 @@
         let lastPrintedHex = "";
         let stableCount = 0;
         let lastRawWeight = 0;
+        let finalWeightKg = 0;
 
-        // Formato de activación BIA Yolanda 0x22
-        function buildBiaTriggerPacket(gender, age, height) {
-            const p = [0x55, 0xAA, 0x22, 0x00, 0x06, 0x01, gender, age, height, 0x00];
+        function buildChecksum(arr) {
             let sum = 0;
-            for (let i = 0; i < p.length; i++) sum += p[i];
-            p.push(sum & 0xFF);
-            return new Uint8Array(p);
+            for (let b of arr) sum += b;
+            arr.push(sum & 0xFF);
+            return new Uint8Array(arr);
+        }
+
+        // Trama de usuario
+        function buildBiaTriggerPacket(gender, age, height) {
+            return buildChecksum([0x55, 0xAA, 0x22, 0x00, 0x06, 0x01, gender, age, height, 0x00]);
+        }
+
+        // Trama de solicitud/ACK para recuperar la memoria post-animación
+        function buildRequestResultPacket() {
+            return buildChecksum([0x55, 0xAA, 0x23, 0x00, 0x01, 0x01]);
+        }
+
+        function calculateBodyComposition(weight, height, age, gender, r) {
+            // Estimación estándar basada en resistencia BIA
+            const heightM = height / 100;
+            const bmi = weight / (heightM * heightM);
+            let fat = (1.20 * bmi) + (0.23 * age) - (10.8 * gender) - 5.4;
+            if (r > 300 && r < 1200) {
+                // Ajuste fino por impedancia real
+                const impedanceIndex = (height * height) / r;
+                fat = fat - (impedanceIndex * 0.15);
+            }
+            fat = Math.max(5, Math.min(50, fat));
+            const fatMass = weight * (fat / 100);
+            const muscle = (weight - fatMass) * 0.72;
+            const water = (weight - fatMass) * 0.73;
+
+            return {
+                fat: fat.toFixed(1),
+                water: water.toFixed(1),
+                muscle: muscle.toFixed(1)
+            };
         }
 
         document.getElementById('btn-conectar').addEventListener('click', async () => {
@@ -212,14 +269,14 @@
 
                 await notifyChar.startNotifications();
 
-                // Handshake inicial
+                // Handshake
                 try {
                     await writeCharGlobal.writeValue(new Uint8Array([0x02, 0x00, 0x00, 0x02]));
                     log(`[${APP_VERSION}] Handshake enviado.`);
                 } catch (e) {}
 
-                statusEl.innerText = "Súbete descalzo y no te muevas";
-                log(`[${APP_VERSION}] Esperando estabilidad real para enviar BIA...`);
+                statusEl.innerText = "Súbete descalzo a la báscula";
+                log(`[${APP_VERSION}] Esperando pesaje...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -230,17 +287,23 @@
 
                     log(`[RX]: ${hex}`);
 
+                    // TRAMA 0x21 (Peso dinámico)
                     if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
-                        const wKg = (rawWeight / 100).toFixed(2);
-                        pesoVal.innerText = `${wKg} kg`;
+                        finalWeightKg = (rawWeight / 100).toFixed(2);
+                        pesoVal.innerText = `${finalWeightKg} kg`;
 
+                        // Si los bytes de impedancia dejan de ser 00 00 en 0x21
                         const impDirect = (bytes[6] << 8) | bytes[7];
                         if (impDirect > 0) {
                             impVal.innerText = `${impDirect} Ω`;
+                            const comp = calculateBodyComposition(parseFloat(finalWeightKg), height, age, gender, impDirect);
+                            fatVal.innerText = `${comp.fat} %`;
+                            waterVal.innerText = `${comp.water} %`;
+                            muscleVal.innerText = `${comp.muscle} kg`;
                         }
 
-                        // Verificación de estabilidad estricta (mismo peso durante al menos 3 tramas)
+                        // PESO ESTABLE CONFIRMADO
                         if (rawWeight > 2000) {
                             if (Math.abs(rawWeight - lastRawWeight) <= 10) {
                                 stableCount++;
@@ -251,28 +314,53 @@
 
                             if (stableCount >= 3 && !profileSent) {
                                 profileSent = true;
-                                statusEl.innerText = "Peso estabilizado. Disparando análisis BIA...";
-                                log(`[${APP_VERSION}] Peso confirmado (${wKg} kg). Enviando paquete 0x22...`);
+                                statusEl.innerText = "Peso fijado. Animación BIA en curso...";
+                                log(`[${APP_VERSION}] Peso fijo (${finalWeightKg} kg). Enviando perfil...`);
 
                                 try {
                                     const pkt = buildBiaTriggerPacket(gender, age, height);
                                     await writeCharGlobal.writeValue(pkt);
-                                    log(`[${APP_VERSION}] Enviado: ${Array.from(pkt).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}`);
+                                    log(`[${APP_VERSION}] Perfil 0x22 inyectado.`);
+
+                                    // Ráfaga de solicitud ACK post-animación (a los 3.5s y 5.5s)
+                                    setTimeout(async () => {
+                                        try {
+                                            const pollPkt = buildRequestResultPacket();
+                                            await writeCharGlobal.writeValue(pollPkt);
+                                            log(`[${APP_VERSION}] Solicitud de datos (ACK 0x23) enviada a los 3.5s.`);
+                                        } catch (e) {}
+                                    }, 3500);
+
+                                    setTimeout(async () => {
+                                        try {
+                                            const pollPkt = buildRequestResultPacket();
+                                            await writeCharGlobal.writeValue(pollPkt);
+                                            log(`[${APP_VERSION}] Solicitud de datos (ACK 0x23) enviada a los 5.5s.`);
+                                        } catch (e) {}
+                                    }, 5500);
+
                                 } catch (errW) {
                                     log(`[${APP_VERSION}] Error escritura: ${errW.message}`);
                                 }
                             }
                         }
                     } 
+                    // CUALQUIER OTRA TRAMA (0x22, 0x23, 0x24, 0x31)
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA) {
-                        log(`[${APP_VERSION}] >>> TRAMA FINAL RECIBIDA: ${hex}`);
-                        statusEl.innerText = "✓ Medición completada";
+                        log(`[${APP_VERSION}] >>> ¡TRAMA ESPECIAL RECIBIDA!: ${hex}`);
+                        statusEl.innerText = "✓ Medición BIA recibida";
 
+                        // Buscar resistencia de 16 bits en el paquete
                         for (let i = 4; i < bytes.length - 2; i++) {
                             const val = (bytes[i] << 8) | bytes[i+1];
-                            if (val >= 350 && val <= 1100) {
+                            if (val >= 350 && val <= 1150) {
                                 impVal.innerText = `${val} Ω`;
-                                log(`[${APP_VERSION}] -> Impedancia: ${val} Ω`);
+                                log(`[${APP_VERSION}] -> Impedancia localizada: ${val} Ω`);
+
+                                const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.2), height, age, gender, val);
+                                fatVal.innerText = `${comp.fat} %`;
+                                waterVal.innerText = `${comp.water} %`;
+                                muscleVal.innerText = `${comp.muscle} kg`;
                                 break;
                             }
                         }
