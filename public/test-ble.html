@@ -3,18 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Conector R-MSC02</title>
+    <title>Captura Renpho R-MSC02</title>
     <style>
-        body { font-family: sans-serif; background: #0b1120; color: white; padding: 16px; text-align: center; }
-        button { padding: 15px 22px; font-size: 15px; font-weight: bold; background: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; margin: 8px 0; }
-        pre { background: #1e293b; padding: 12px; border-radius: 8px; text-align: left; font-family: monospace; font-size: 12px; max-height: 480px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0f172a;
+            color: #f8fafc;
+            padding: 20px;
+            text-align: center;
+        }
+        button {
+            padding: 15px 28px;
+            font-size: 16px;
+            font-weight: 600;
+            background: #0284c7;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+        button:active {
+            background: #0369a1;
+        }
+        pre {
+            background: #1e293b;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: left;
+            font-family: monospace;
+            font-size: 13px;
+            max-height: 480px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            margin-top: 15px;
+            border: 1px solid #334155;
+        }
     </style>
 </head>
 <body>
-    <h3>Lector GATT Interactivo R-MSC02</h3>
-    <p style="font-size: 13px; color: #94a3b8;">1. Da un toque a la báscula.<br>2. Pulsa Conectar.<br>3. Súbete descalzo.</p>
-    <button id="btn-conectar">Conectar e Inicializar</button>
-    <pre id="log">Esperando...</pre>
+    <h2>Captura Renpho R-MSC02</h2>
+    <p style="font-size: 14px; color: #94a3b8;">1. Enciende la báscula con el pie.<br>2. Pulsa el botón y selecciónala.<br>3. Súbete descalzo y espera a que fije el peso.</p>
+    
+    <button id="btn-conectar">Conectar a la Báscula</button>
+    <pre id="log">Esperando conexión...</pre>
 
     <script>
         const logEl = document.getElementById('log');
@@ -23,82 +56,36 @@
             logEl.scrollTop = logEl.scrollHeight;
         }
 
-        // Catálogo exhaustivo de servicios propietarios de Yolanda / Chipsea / Renpho
-        const CANDIDATE_SERVICES = [
-            0xffe0, 0xfff0, 0xff12, 0xfa90, 0xffb0, 0xfee7, 0xfee0, 0xfd00,
-            '0000ffe0-0000-1000-8000-00805f9b34fb',
-            '0000fff0-0000-1000-8000-00805f9b34fb',
-            '0000ff12-0000-1000-8000-00805f9b34fb',
-            '0000fa90-0000-1000-8000-00805f9b34fb',
-            '0000ffb0-0000-1000-8000-00805f9b34fb',
-            '0000fee7-0000-1000-8000-00805f9b34fb',
-            '0000fee0-0000-1000-8000-00805f9b34fb',
-            '0000181d-0000-1000-8000-00805f9b34fb',
-            '0000181b-0000-1000-8000-00805f9b34fb'
-        ];
+        // UUIDs exactos extraídos de nRF Connect
+        const SERVICE_UUID = 0x1a10;
+        const CHAR_NOTIFY_UUID = 0x2a10;
 
         document.getElementById('btn-conectar').addEventListener('click', async () => {
-            logEl.innerText = "Buscando báscula...";
+            logEl.innerText = "Buscando R-MSC02...";
             try {
                 const device = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'R-' }, { namePrefix: 'Renpho' }, { namePrefix: 'QN' }, { name: 'R-MSC02' }],
-                    optionalServices: CANDIDATE_SERVICES
+                    filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
+                    optionalServices: [SERVICE_UUID]
                 });
 
-                log(`Conectando a ${device.name}...`);
+                log(`Dispositivo vinculado: ${device.name}`);
+                log("Conectando al servidor GATT...");
                 const server = await device.gatt.connect();
-                log("¡GATT Conectado! Buscando servicios activos...");
 
-                let notifyCharFound = null;
-                let writeCharFound = null;
+                log("Accediendo al servicio 0x1A10...");
+                const service = await server.getPrimaryService(SERVICE_UUID);
 
-                for (let sUuid of CANDIDATE_SERVICES) {
-                    try {
-                        const srv = await server.getPrimaryService(sUuid);
-                        log(`✓ Servicio encontrado: ${srv.uuid}`);
-                        const chars = await srv.getCharacteristics();
-                        for (let ch of chars) {
-                            const p = ch.properties;
-                            log(`  • Char: ${ch.uuid} | Read:${p.read} Write:${p.write || p.writeWithoutResponse} Notify:${p.notify || p.indicate}`);
+                log("Suscribiendo a notificaciones (0x2A10)...");
+                const notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
+                await notifyChar.startNotifications();
 
-                            if (p.notify || p.indicate) {
-                                notifyCharFound = ch;
-                                await ch.startNotifications();
-                                ch.addEventListener('characteristicvaluechanged', (e) => {
-                                    const val = new Uint8Array(e.target.value.buffer);
-                                    const hex = Array.from(val).map(b => b.toString(16).padStart(2, '0')).join(' ');
-                                    log(`>>> LECTURA [${ch.uuid.slice(4, 8)}]: ${hex}`);
-                                });
-                                log(`   -> Notificaciones activas en ${ch.uuid.slice(4, 8)}`);
-                            }
+                notifyChar.addEventListener('characteristicvaluechanged', (event) => {
+                    const bytes = new Uint8Array(event.target.value.buffer);
+                    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+                    log(`>>> TRAMA: ${hex}`);
+                });
 
-                            if (p.write || p.writeWithoutResponse) {
-                                writeCharFound = ch;
-                            }
-                        }
-                    } catch (e) {
-                        // Servicio no implementado en esta variante, continúa
-                    }
-                }
-
-                // Enviar handshake común si hay canal de escritura
-                if (writeCharFound) {
-                    log(`Enviando sincronización a ${writeCharFound.uuid.slice(4, 8)}...`);
-                    // Comandos de sincronización típicos de Yolanda (ping / wake)
-                    try {
-                        await writeCharFound.writeValue(new Uint8Array([0x02, 0x00, 0x00, 0x02]));
-                    } catch (errW) {
-                        try {
-                            await writeCharFound.writeValueWithoutResponse(new Uint8Array([0x02, 0x00, 0x00, 0x02]));
-                        } catch (e2) {}
-                    }
-                }
-
-                if (!notifyCharFound) {
-                    log("Aviso: No se encontraron canales de notificación en la lista habitual.");
-                } else {
-                    log("\n¡Listo! Súbete descalzo a la báscula.");
-                }
+                log("¡Suscripción lista! Súbete descalzo a la báscula.");
 
             } catch (err) {
                 log(`ERROR: ${err.message}`);
