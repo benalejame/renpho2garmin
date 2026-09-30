@@ -3,585 +3,831 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho a Garmin Auto-Sync</title>
-
-    <!-- Favicon SVG Báscula inteligente embebido en Data URI -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23090d16%22/%3E%3Crect%20x%3D%225%22%20y%3D%225%22%20width%3D%2222%22%20height%3D%2222%22%20rx%3D%224%22%20fill%3D%22%231e293b%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.8%22/%3E%3Crect%20x%3D%2211.5%22%20y%3D%227.5%22%20width%3D%229%22%20height%3D%223.5%22%20rx%3D%221%22%20fill%3D%22%2338bdf8%22/%3E%3Cpath%20d%3D%22M8.5%2014a2.5%202.5%200%200%201%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M23.5%2014a2.5%202.5%200%200%200%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M10%2023h12%22%20stroke%3D%22%2338bdf8%22%20stroke-opacity%3D%220.5%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E#v=2">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%23090d16%22/%3E%3Crect%20x%3D%225%22%20y%3D%225%22%20width%3D%2222%22%20height%3D%2222%22%20rx%3D%224%22%20fill%3D%22%231e293b%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.8%22/%3E%3Crect%20x%3D%2211.5%22%20y%3D%227.5%22%20width%3D%229%22%20height%3D%223.5%22%20rx%3D%221%22%20fill%3D%22%2338bdf8%22/%3E%3Cpath%20d%3D%22M8.5%2014a2.5%202.5%200%200%201%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M23.5%2014a2.5%202.5%200%200%200%200%205%22%20fill%3D%22none%22%20stroke%3D%22%2338bdf8%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3Cpath%20d%3D%22M10%2023h12%22%20stroke%3D%22%2338bdf8%22%20stroke-opacity%3D%220.5%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E">
-
+    <title>Renpho 8E ➔ Garmin Connect</title>
+    <script src="fit-encoder.js"></script>
     <style>
+        :root {
+            --bg-page: #090d16;
+            --bg-card: #1e293b;
+            --bg-inner: #0f172a;
+            --border: #334155;
+            --text-main: #f8fafc;
+            --text-sub: #94a3b8;
+            --accent: #0284c7;
+            --accent-hover: #0369a1;
+            --green: #10b981;
+            --green-hover: #059669;
+        }
+
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-            background-color: #090d16;
-            color: #f1f5f9;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-page);
+            color: var(--text-main);
             padding: 16px;
-            box-sizing: border-box;
-        }
-        .card {
-            background: #1e293b;
-            padding: 24px;
-            border-radius: 20px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-            max-width: 460px;
-            width: 100%;
-            border: 1px solid #334155;
-        }
-        h1 {
-            font-size: 20px;
-            color: #38bdf8;
-            margin: 0 0 6px 0;
-            text-align: center;
-        }
-        p {
-            font-size: 13px;
-            color: #94a3b8;
-            text-align: center;
-            margin: 0 0 16px 0;
-        }
-        .gender-selector {
-            display: flex;
-            background: #0f172a;
-            border-radius: 10px;
-            padding: 4px;
-            margin-bottom: 16px;
-            border: 1px solid #334155;
-            gap: 4px;
-        }
-        .gender-btn {
-            flex: 1;
-            padding: 8px;
-            background: transparent;
-            border: none;
-            border-radius: 8px;
-            color: #94a3b8;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .gender-btn.active {
-            background: #0284c7;
-            color: white;
-        }
-        .file-box {
-            position: relative;
+            margin: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 22px 15px;
-            border: 2px dashed #0284c7;
-            border-radius: 14px;
-            background-color: #0f172a;
-            cursor: pointer;
-            text-align: center;
-            margin-bottom: 16px;
-            transition: border-color 0.2s;
         }
-        .file-box:hover {
-            border-color: #38bdf8;
+
+        .container {
+            width: 100%;
+            max-width: 480px;
         }
-        .file-box input {
-            position: absolute;
-            left: 0; top: 0; width: 100%; height: 100%;
-            opacity: 0; cursor: pointer;
-        }
-        .scale-icon {
-            width: 48px;
-            height: 48px;
-            margin-bottom: 8px;
-            fill: none;
-            stroke: #38bdf8;
-            stroke-width: 1.8;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-        }
-        .metrics-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 7px;
-            background: #0f172a;
-            padding: 12px;
+
+        .card {
+            background: var(--bg-card);
             border-radius: 12px;
-            font-size: 13px;
-            margin-bottom: 16px;
-            display: none;
+            padding: 18px;
+            box-sizing: border-box;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            margin-bottom: 14px;
         }
-        .metric-item {
+
+        h2 { margin: 0 0 12px 0; font-size: 20px; text-align: center; }
+
+        /* Pestañas de modo */
+        .tabs {
+            display: flex;
+            background: var(--bg-inner);
+            border-radius: 8px;
+            padding: 4px;
+            margin-bottom: 16px;
+            gap: 4px;
+            border: 1px solid var(--border);
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: var(--text-sub);
+            padding: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: var(--accent);
+            color: #ffffff;
+        }
+
+        .form-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 7px 10px;
-            background: #1e293b;
-            border-radius: 8px;
-            border: 1px solid #334155;
-        }
-        .metric-item span { color: #94a3b8; }
-        .metric-item strong { color: #38bdf8; font-size: 13.5px; }
-
-        .auth-container {
-            background: #0f172a;
-            padding: 14px;
-            border-radius: 12px;
-            border: 1px solid #334155;
-            margin-bottom: 14px;
-        }
-        .auth-container.hidden {
-            display: none;
-        }
-        .input-group {
             margin-bottom: 10px;
-            text-align: left;
         }
-        .input-group label {
-            display: block;
-            font-size: 12px;
-            color: #cbd5e1;
-            margin-bottom: 4px;
-        }
-        .input-group input {
-            width: 100%;
-            padding: 10px 12px;
-            background: #1e293b;
-            border: 1px solid #334155;
-            border-radius: 8px;
+
+        label { font-size: 13px; color: var(--text-sub); }
+
+        input, select {
+            background: var(--bg-inner);
+            border: 1px solid var(--border);
             color: white;
+            padding: 8px 10px;
+            border-radius: 6px;
             font-size: 14px;
-            box-sizing: border-box;
+            text-align: center;
         }
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 13px;
-            color: #94a3b8;
-            margin-top: 6px;
-            cursor: pointer;
-        }
-        .checkbox-group input {
-            width: 16px;
-            height: 16px;
-            accent-color: #0284c7;
-            cursor: pointer;
-        }
-        .toggle-credentials-btn {
-            background: none;
-            border: none;
-            color: #38bdf8;
-            font-size: 12px;
-            cursor: pointer;
-            padding: 4px 0;
-            display: block;
-            margin: 0 auto 12px auto;
-            text-decoration: underline;
-        }
-        .btn-sync {
+
+        button.action-btn {
             width: 100%;
-            padding: 14px;
-            background: #0284c7;
-            border: none;
-            border-radius: 10px;
-            color: white;
+            padding: 13px;
             font-size: 15px;
-            font-weight: 600;
+            font-weight: 700;
+            background: var(--accent);
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
             cursor: pointer;
-            transition: 0.2s;
+            margin-top: 8px;
+            transition: background 0.2s;
         }
-        .btn-sync:hover { background: #0369a1; }
-        .btn-sync:disabled { background: #475569; cursor: not-allowed; }
-        .status {
+
+        button.action-btn:hover { background: var(--accent-hover); }
+        button.action-btn:disabled { background: #475569; cursor: not-allowed; }
+
+        button.btn-garmin {
+            background: var(--green);
+            margin-top: 10px;
+        }
+
+        button.btn-garmin:hover { background: var(--green-hover); }
+
+        .display-val {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            margin-top: 6px;
+        }
+
+        .metric-title { font-size: 11px; color: var(--text-sub); letter-spacing: 0.5px; }
+        .metric-num { font-size: 28px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
+
+        .grid-results {
             margin-top: 14px;
+            border-top: 1px solid var(--border);
+            padding-top: 10px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            text-align: center;
+        }
+
+        .grid-item { background: var(--bg-inner); padding: 8px 6px; border-radius: 6px; border: 1px solid var(--border); }
+        .grid-val { font-size: 14px; font-weight: bold; color: #34d399; margin-top: 2px; }
+
+        .segmental-row {
+            grid-column: span 2;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-top: 4px;
+            border-top: 1px dashed var(--border);
+            padding-top: 8px;
+        }
+
+        .config-garmin {
+            border-top: 1px solid var(--border);
+            margin-top: 12px;
+            padding-top: 10px;
+        }
+
+        /* Sección CSV */
+        .csv-dropzone {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.2s;
+        }
+        .csv-dropzone:hover { border-color: var(--accent); background: #0f172a; }
+
+        pre {
+            background: #020617;
             padding: 12px;
             border-radius: 8px;
-            font-size: 13px;
-            display: none;
-            line-height: 1.4;
+            font-family: monospace;
+            font-size: 11px;
+            max-height: 180px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            border: 1px solid var(--border);
+            color: #cbd5e1;
+            margin: 0;
+            box-sizing: border-box;
         }
-        .status.success { background: #064e3b; color: #a7f3d0; border: 1px solid #059669; display: block; }
-        .status.error { background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; display: block; }
-        .status.loading { background: #1e3a5f; color: #93c5fd; border: 1px solid #2563eb; display: block; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h1>Renpho ➔ Garmin Connect</h1>
-    <p>Selecciona tu CSV para subir automáticamente tus mediciones.</p>
-
-    <!-- Selector de Sexo -->
-    <div class="gender-selector">
-        <button type="button" class="gender-btn active" id="btn-male">Hombre</button>
-        <button type="button" class="gender-btn" id="btn-female">Mujer</button>
-    </div>
-
-    <div class="file-box">
-        <svg class="scale-icon" viewBox="0 0 24 24">
-            <rect x="2.5" y="2.5" width="19" height="19" rx="4" />
-            <rect x="8.5" y="5" width="7" height="3" rx="1" fill="#38bdf8" stroke="none" />
-            <path d="M5.5 11a2.5 2.5 0 0 1 0 5" />
-            <path d="M18.5 11a2.5 2.5 0 0 0 0 5" />
-            <path d="M7 19h10" stroke-opacity="0.4" />
-        </svg>
-        <strong id="file-label" style="font-size: 14px;">Toca para cargar renpho.csv</strong>
-        <input type="file" id="csv-file" accept=".csv">
-    </div>
-
-    <div id="metrics-card" class="metrics-grid"></div>
-
-    <form id="auth-form" onsubmit="return false;">
-        <div id="auth-panel" class="auth-container">
-            <div class="input-group">
-                <label for="email">Correo de Garmin Connect</label>
-                <input type="email" id="email" name="username" autocomplete="username" placeholder="usuario@gmail.com">
-            </div>
-            <div class="input-group">
-                <label for="password">Contraseña de Garmin Connect</label>
-                <input type="password" id="password" name="password" autocomplete="current-password" placeholder="••••••••">
-            </div>
-            <label class="checkbox-group">
-                <input type="checkbox" id="remember-me" checked>
-                <span>Recordar credenciales en este dispositivo</span>
-            </label>
+    <div class="container">
+        <!-- PESTAÑAS -->
+        <div class="tabs">
+            <button class="tab-btn active" id="tab-ble" onclick="switchTab('ble')">Báscula en Vivo (BLE)</button>
+            <button class="tab-btn" id="tab-csv" onclick="switchTab('csv')">Importar CSV Histórico</button>
         </div>
 
-        <button type="button" id="toggle-auth" class="toggle-credentials-btn">⚙️ Configurar credenciales de acceso</button>
-        <button type="submit" id="btn-submit" class="btn-sync" disabled>Sube un archivo CSV primero</button>
-    </form>
+        <!-- TARJETA CONFIGURACIÓN Y PERFIL -->
+        <div class="card">
+            <h2>Perfil & Garmin Connect</h2>
+            <div class="form-row">
+                <label for="profile-select">Usuario:</label>
+                <select id="profile-select" style="width: 140px;">
+                    <option value="user1">Benjamín</option>
+                    <option value="user2">Pareja</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label for="gender">Sexo:</label>
+                <select id="gender" style="width: 140px;">
+                    <option value="1">Hombre</option>
+                    <option value="0">Mujer</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label for="height">Altura (cm):</label>
+                <input type="number" id="height" value="174" min="50" max="250" style="width: 120px;">
+            </div>
+            <div class="form-row">
+                <label for="age">Edad:</label>
+                <input type="number" id="age" value="53" min="5" max="120" style="width: 120px;">
+            </div>
 
-    <div id="status" class="status"></div>
-</div>
+            <div class="config-garmin">
+                <div class="form-row">
+                    <label for="garmin-email">Garmin Email:</label>
+                    <input type="email" id="garmin-email" style="width: 190px;" placeholder="usuario@garmin.com">
+                </div>
+                <div class="form-row">
+                    <label for="garmin-password">Garmin Clave:</label>
+                    <input type="password" id="garmin-password" style="width: 190px;" placeholder="••••••••">
+                </div>
+            </div>
+        </div>
 
-<script>
-    const crcTable = [
-        0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
-        0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
-    ];
+        <!-- VISTA 1: BÁSCULA BLE EN VIVO -->
+        <div id="view-ble">
+            <div class="card" style="text-align: center;">
+                <button id="btn-conectar" class="action-btn">Conectar Báscula (1 Clic)</button>
+                <div id="status" style="font-size: 13px; color: var(--text-sub); margin-top: 10px;">
+                    Desconectado
+                </div>
+            </div>
 
-    function calculateCRC(buffer, start, end) {
-        let crc = 0;
-        for (let i = start; i < end; i++) {
-            let byte = buffer[i];
-            let tmp = crcTable[crc & 0xF];
-            crc = (crc >> 4) & 0x0FFF;
-            crc = crc ^ tmp ^ crcTable[byte & 0xF];
-            tmp = crcTable[crc & 0xF];
-            crc = (crc >> 4) & 0x0FFF;
-            crc = crc ^ tmp ^ crcTable[(byte >> 4) & 0xF];
+            <div class="card">
+                <div class="display-val">
+                    <div>
+                        <div class="metric-title">PESO FINAL</div>
+                        <div class="metric-num" id="peso-val">--.-- kg</div>
+                    </div>
+                    <div>
+                        <div class="metric-title">IMC</div>
+                        <div class="metric-num" id="imc-val">--.-</div>
+                    </div>
+                </div>
+
+                <div class="grid-results">
+                    <div class="grid-item">
+                        <div class="metric-title">GRASA CORPORAL</div>
+                        <div class="grid-val" id="fat-val">--.- % (--.- kg)</div>
+                    </div>
+                    <div class="grid-item">
+                        <div class="metric-title">AGUA CORPORAL</div>
+                        <div class="grid-val" id="water-val">--.- % (--.- kg)</div>
+                    </div>
+                    <div class="grid-item">
+                        <div class="metric-title">MÚSCULO TOTAL</div>
+                        <div class="grid-val" id="muscle-val">--.- kg (--.- %)</div>
+                    </div>
+                    <div class="grid-item">
+                        <div class="metric-title">MÚSCULO ESQUELÉTICO</div>
+                        <div class="grid-val" id="skeletal-val">--.- kg (--.- %)</div>
+                    </div>
+                    <div class="grid-item">
+                        <div class="metric-title">MASA ÓSEA / PROTEÍNA</div>
+                        <div class="grid-val" id="bone-prot-val">--.- kg / --.- kg</div>
+                    </div>
+                    <div class="grid-item">
+                        <div class="metric-title">VISCERAL / SUBCUTÁNEA</div>
+                        <div class="grid-val" id="visc-sub-val">Nivel - / --.- %</div>
+                    </div>
+                    <div class="grid-item">
+                        <div class="metric-title">TMB (BASAL)</div>
+                        <div class="grid-val" id="bmr-val">---- kcal</div>
+                    </div>
+                    <div class="grid-item">
+                        <div class="metric-title">EDAD METABÓLICA</div>
+                        <div class="grid-val" id="met-age-val">-- años</div>
+                    </div>
+
+                    <div class="segmental-row">
+                        <div class="grid-item">
+                            <div class="metric-title">BRAZO DER.</div>
+                            <div class="grid-val" id="ra-val">-- Ω</div>
+                        </div>
+                        <div class="grid-item">
+                            <div class="metric-title">TRONCO</div>
+                            <div class="grid-val" id="tr-val">-- Ω</div>
+                        </div>
+                        <div class="grid-item">
+                            <div class="metric-title">BRAZO IZQ.</div>
+                            <div class="grid-val" id="la-val">-- Ω</div>
+                        </div>
+                        <div class="grid-item">
+                            <div class="metric-title">PIERNA DER.</div>
+                            <div class="grid-val" id="rl-val">-- Ω</div>
+                        </div>
+                        <div class="grid-item">
+                            <div class="metric-title">IMP. MEDIA</div>
+                            <div class="grid-val" id="imp-val">-- Ω</div>
+                        </div>
+                        <div class="grid-item">
+                            <div class="metric-title">PIERNA IZQ.</div>
+                            <div class="grid-val" id="ll-val">-- Ω</div>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="btn-subir-ble" class="action-btn btn-garmin" style="display: none;">
+                    Subir Medición a Garmin Connect
+                </button>
+            </div>
+        </div>
+
+        <!-- VISTA 2: IMPORTAR CSV HISTÓRICO -->
+        <div id="view-csv" style="display: none;">
+            <div class="card">
+                <h3 style="margin-top: 0; font-size: 16px; text-align: center;">Cargar Archivo CSV Renpho</h3>
+                <div class="csv-dropzone" onclick="document.getElementById('file-input').click()">
+                    <span id="csv-label">Haz clic aquí para seleccionar el archivo exportado de RENPHO (.csv)</span>
+                    <input type="file" id="file-input" accept=".csv" style="display: none;">
+                </div>
+                <div id="csv-summary" style="margin-top: 14px; display: none;">
+                    <div style="font-size: 14px; color: var(--text-main); margin-bottom: 6px;">
+                        Medición seleccionada: <b id="csv-fecha">--</b>
+                    </div>
+                    <div style="font-size: 13px; color: var(--text-sub);">
+                        Peso: <span id="csv-peso" style="color: #38bdf8; font-weight: bold;">-- kg</span> | 
+                        Grasa: <span id="csv-grasa" style="color: #34d399; font-weight: bold;">-- %</span> | 
+                        Agua: <span id="csv-agua" style="color: #34d399; font-weight: bold;">-- %</span>
+                    </div>
+                    <button id="btn-subir-csv" class="action-btn btn-garmin" style="margin-top: 14px;">
+                        Subir Medición CSV a Garmin
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- LOG DE TELEMETRÍA -->
+        <div class="card" style="padding: 10px;">
+            <pre id="log">Aplicación unificada lista. Selecciona un modo o pulsa Conectar.</pre>
+        </div>
+    </div>
+
+    <script>
+        const APP_VERSION = "v9.1";
+        const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+        const btnConectar = document.getElementById('btn-conectar');
+        const btnSubirBle = document.getElementById('btn-subir-ble');
+        const btnSubirCsv = document.getElementById('btn-subir-csv');
+
+        // Métricas DOM
+        const pesoVal = document.getElementById('peso-val');
+        const imcVal = document.getElementById('imc-val');
+        const fatVal = document.getElementById('fat-val');
+        const waterVal = document.getElementById('water-val');
+        const muscleVal = document.getElementById('muscle-val');
+        const skeletalVal = document.getElementById('skeletal-val');
+        const boneProtVal = document.getElementById('bone-prot-val');
+        const viscSubVal = document.getElementById('visc-sub-val');
+        const bmrVal = document.getElementById('bmr-val');
+        const metAgeVal = document.getElementById('met-age-val');
+        const raVal = document.getElementById('ra-val');
+        const trVal = document.getElementById('tr-val');
+        const laVal = document.getElementById('la-val');
+        const rlVal = document.getElementById('rl-val');
+        const llVal = document.getElementById('ll-val');
+        const impVal = document.getElementById('imp-val');
+
+        // Controles de usuario
+        const profileSelect = document.getElementById('profile-select');
+        const genderInput = document.getElementById('gender');
+        const heightInput = document.getElementById('height');
+        const ageInput = document.getElementById('age');
+        const garminEmail = document.getElementById('garmin-email');
+        const garminPassword = document.getElementById('garmin-password');
+
+        function switchTab(mode) {
+            document.getElementById('tab-ble').classList.toggle('active', mode === 'ble');
+            document.getElementById('tab-csv').classList.toggle('active', mode === 'csv');
+            document.getElementById('view-ble').style.display = mode === 'ble' ? 'block' : 'none';
+            document.getElementById('view-csv').style.display = mode === 'csv' ? 'block' : 'none';
         }
-        return crc;
-    }
 
-    let generatedFitBase64 = null;
-    let cachedCSVContent = null;
-    let selectedGender = localStorage.getItem('garmin_gender') || 'male';
-
-    const btnMale = document.getElementById('btn-male');
-    const btnFemale = document.getElementById('btn-female');
-
-    function updateGenderUI() {
-        if (selectedGender === 'female') {
-            btnFemale.classList.add('active');
-            btnMale.classList.remove('active');
-        } else {
-            btnMale.classList.add('active');
-            btnFemale.classList.remove('active');
-        }
-    }
-    updateGenderUI();
-
-    btnMale.addEventListener('click', function() {
-        selectedGender = 'male';
-        localStorage.setItem('garmin_gender', 'male');
-        updateGenderUI();
-        if (cachedCSVContent) processCSV(cachedCSVContent);
-    });
-
-    btnFemale.addEventListener('click', function() {
-        selectedGender = 'female';
-        localStorage.setItem('garmin_gender', 'female');
-        updateGenderUI();
-        if (cachedCSVContent) processCSV(cachedCSVContent);
-    });
-
-    // Gestión de credenciales locales
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    const rememberCheckbox = document.getElementById('remember-me');
-    const authPanel = document.getElementById('auth-panel');
-    const toggleAuthBtn = document.getElementById('toggle-auth');
-
-    const savedEmail = localStorage.getItem('garmin_email');
-    const savedPassword = localStorage.getItem('garmin_password');
-
-    if (savedEmail && savedPassword) {
-        emailInput.value = savedEmail;
-        passwordInput.value = savedPassword;
-        rememberCheckbox.checked = true;
-        authPanel.classList.add('hidden');
-        toggleAuthBtn.innerText = '⚙️ Configurar credenciales de acceso';
-    } else {
-        authPanel.classList.remove('hidden');
-        toggleAuthBtn.innerText = 'Ocultar credenciales';
-    }
-
-    toggleAuthBtn.addEventListener('click', function() {
-        const isHidden = authPanel.classList.toggle('hidden');
-        toggleAuthBtn.innerText = isHidden ? '⚙️ Configurar credenciales de acceso' : 'Ocultar credenciales';
-    });
-
-    document.getElementById('csv-file').addEventListener('change', function(e) {
-        let file = e.target.files[0];
-        if (!file) return;
-        document.getElementById('file-label').innerText = file.name;
-
-        let reader = new FileReader();
-        reader.onload = function(evt) {
-            cachedCSVContent = evt.target.result;
-            processCSV(cachedCSVContent);
+        const PROFILES = {
+            user1: { gender: 1, height: 174, age: 53 },
+            user2: { gender: 0, height: 160, age: 50 }
         };
-        reader.readAsText(file, 'UTF-8-SIG');
-    });
 
-    function processCSV(text) {
-        try {
-            let lines = text.split(/\r?\n/);
-            if (lines.length < 2) throw new Error("CSV inválido.");
-            let headers = lines[0].split(',');
-            let rows = [];
-            for (let i = 1; i < lines.length; i++) {
-                let l = lines[i].trim();
-                if (!l) continue;
-                let c = l.split(',');
-                let o = {};
-                for (let j = 0; j < headers.length; j++) {
-                    if (headers[j]) o[headers[j].trim()] = c[j] ? c[j].trim() : '';
-                }
-                rows.push(o);
-            }
+        function loadProfile(key) {
+            const p = JSON.parse(localStorage.getItem('r_profile_' + key)) || PROFILES[key];
+            genderInput.value = p.gender;
+            heightInput.value = p.height;
+            ageInput.value = p.age;
+            garminEmail.value = localStorage.getItem('g_email_' + key) || '';
+            garminPassword.value = localStorage.getItem('g_pass_' + key) || '';
+        }
 
-            let row = null;
-            for (let k = 0; k < rows.length; k++) {
-                let f = rows[k]['Porcentaje de grasa corporal(%)'] || rows[k]['Grasa corporal(%)'] || rows[k]['Body Fat(%)'];
-                if (f && f !== '--') { row = rows[k]; break; }
-            }
-            if (!row) throw new Error("No hay registros completos en el CSV.");
+        function saveCurrentProfile() {
+            const key = profileSelect.value;
+            const data = {
+                gender: parseInt(genderInput.value, 10),
+                height: parseInt(heightInput.value, 10),
+                age: parseInt(ageInput.value, 10)
+            };
+            localStorage.setItem('r_profile_' + key, JSON.stringify(data));
+            localStorage.setItem('g_email_' + key, garminEmail.value.trim());
+            localStorage.setItem('g_pass_' + key, garminPassword.value.trim());
+        }
 
-            function g(names) {
-                for (let n of names) {
-                    if (row[n] !== undefined && row[n] !== '' && row[n] !== '--') return row[n].replace(',', '.');
-                }
-                return null;
-            }
+        profileSelect.addEventListener('change', () => loadProfile(profileSelect.value));
+        genderInput.addEventListener('change', saveCurrentProfile);
+        heightInput.addEventListener('change', saveCurrentProfile);
+        ageInput.addEventListener('change', saveCurrentProfile);
+        garminEmail.addEventListener('change', saveCurrentProfile);
+        garminPassword.addEventListener('change', saveCurrentProfile);
+        loadProfile('user1');
 
-            let peso = parseFloat(g(['Peso(kg)', 'Weight(kg)']));
-            let bmi = parseFloat(g(['IMC', 'BMI']));
-            let grasa = parseFloat(g(['Porcentaje de grasa corporal(%)', 'Grasa corporal(%)', 'Body Fat(%)']));
-            let musculo = parseFloat(g(['Masa muscular(kg)', 'Masa muscular', 'Muscle Mass(kg)', 'Muscle Mass', 'Masa muscular esquelética(kg)', 'Masa muscular esqueletica(kg)']));
-            let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Agua corporal(%)', 'Body Water(%)']));
-            let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Masa ósea', 'Bone Mass(kg)']));
-            let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 0, 10);
-            let metabolic = parseInt(g(['Edad metabólica', 'Edad metabolica', 'Metabolic Age']) || 0, 10);
+        function log(msg) {
+            logEl.innerText += "\n" + msg;
+            logEl.scrollTop = logEl.scrollHeight;
+        }
 
-            let fecha = g(['Fecha', 'Date']);
-            let hora = g(['Hora', 'Time']) || '08:00:00';
+        // ==========================================
+        //  LÓGICA BLUETOOTH (BLE R-MSC02 8E)
+        // ==========================================
+        const SERVICE_UUID = 0x1a10;
+        let writeCharGlobal = null;
+        let b2Sent = false;
+        let lastPrintedHex = "";
+        let finalWeightKg = 0;
+        let isWriting = false;
+        let writeQueue = [];
+        let fragMap = {};
+        let bleCalculatedMetrics = null;
 
-            let [y, m, d] = fecha.replace(/\./g, '-').split('-');
-            let [hh, mm, ss] = hora.split(':');
-            let dt = new Date(Date.UTC(y, m - 1, d, hh || 8, mm || 0, ss || 0));
-            let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
-            let timestamp = Math.floor((dt.getTime() - garminEpoch) / 1000);
+        const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
+        const PKT_B2_INIT = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, 0x1C, 0x4D, 0xB5, 0x07, 0x02, 0xB4]);
 
-            // Cálculo diferenciado por sexo
-            let physique = 6;
-            if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
-                let mRatio = musculo / peso;
-                if (selectedGender === 'female') {
-                    // Umbrales para mujer
-                    if (grasa < 21) {
-                        physique = (mRatio >= 0.70) ? 9 : ((mRatio >= 0.64) ? 8 : 7);
-                    } else if (grasa <= 33) {
-                        physique = (mRatio >= 0.68) ? 6 : ((mRatio >= 0.62) ? 5 : 4);
-                    } else {
-                        physique = (mRatio >= 0.65) ? 3 : ((mRatio >= 0.58) ? 2 : 1);
-                    }
+        function buildAckB6(frameId) {
+            const p = [0x55, 0xAA, 0xB6, 0x00, 0x02, frameId, 0x01];
+            let sum = 0;
+            for (let b of p) sum += b;
+            p.push(sum & 0xFF);
+            return new Uint8Array(p);
+        }
+
+        function calculateBodyComposition(weight, height, age, gender, rExtremidades) {
+            const heightM = height / 100;
+            const bmi = weight / (heightM * heightM);
+            const impedanceIndex = (height * height) / rExtremidades;
+
+            let ffm = (0.582 * impedanceIndex) + (0.285 * weight) + (4.2 * gender) - (0.05 * age) - 0.6;
+            if (ffm >= weight) ffm = weight * 0.85;
+
+            const fatKg = Math.max(2, weight - ffm);
+            const fatPct = (fatKg / weight) * 100;
+
+            const waterKg = ffm * 0.7327;
+            const waterPct = (waterKg / weight) * 100;
+
+            const boneKg = weight * 0.0557;
+            const bonePct = (boneKg / weight) * 100;
+
+            const muscleKg = ffm - (boneKg * 0.98);
+            const musclePct = (muscleKg / weight) * 100;
+
+            const skeletalKg = muscleKg * 0.6093;
+            const skeletalPct = (skeletalKg / weight) * 100;
+
+            const proteinKg = Math.max(1, ffm - waterKg - boneKg);
+            const proteinPct = (proteinKg / weight) * 100;
+
+            const subcutPct = Math.max(1, fatPct - 5.0);
+            const visceralLevel = Math.max(1, Math.round((fatPct * 0.25) - 0.4));
+            const bmr = Math.round(370 + (21.6 * ffm));
+
+            const idealFatPct = gender === 1 ? 18.0 : 23.0;
+            const metabolicAge = Math.max(12, Math.round(age + ((fatPct - idealFatPct) * 0.7)));
+
+            return {
+                weight: weight,
+                bmi: bmi.toFixed(1),
+                ffm: ffm.toFixed(2),
+                fatPct: fatPct.toFixed(1),
+                fatKg: fatKg.toFixed(2),
+                musclePct: musclePct.toFixed(1),
+                muscleKg: muscleKg.toFixed(2),
+                skeletalPct: skeletalPct.toFixed(1),
+                skeletalKg: skeletalKg.toFixed(2),
+                waterPct: waterPct.toFixed(1),
+                waterKg: waterKg.toFixed(2),
+                boneKg: boneKg.toFixed(1),
+                bonePct: bonePct.toFixed(1),
+                proteinKg: proteinKg.toFixed(2),
+                proteinPct: proteinPct.toFixed(1),
+                subcutPct: subcutPct.toFixed(1),
+                visceralLevel: visceralLevel,
+                bmr: bmr,
+                metabolicAge: metabolicAge
+            };
+        }
+
+        async function processWriteQueue() {
+            if (isWriting || writeQueue.length === 0 || !writeCharGlobal) return;
+            isWriting = true;
+            const task = writeQueue.shift();
+            try {
+                if (writeCharGlobal.writeValueWithResponse) {
+                    await writeCharGlobal.writeValueWithResponse(task.pkt);
                 } else {
-                    // Umbrales para hombre
-                    if (grasa < 14) {
-                        physique = (mRatio >= 0.76) ? 9 : ((mRatio >= 0.70) ? 8 : 7);
-                    } else if (grasa <= 22) {
-                        physique = (mRatio >= 0.75) ? 6 : ((mRatio >= 0.68) ? 5 : 4);
-                    } else {
-                        physique = (mRatio >= 0.72) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
-                    }
+                    await writeCharGlobal.writeValue(task.pkt);
+                }
+            } catch (e) {
+                try { await writeCharGlobal.writeValue(task.pkt); } catch (err2) {}
+            } finally {
+                isWriting = false;
+                setTimeout(processWriteQueue, 30);
+            }
+        }
+
+        function queueWrite(pkt, name) {
+            writeQueue.push({ pkt, name });
+            processWriteQueue();
+        }
+
+        function parseCompleteBiaPayload(payload) {
+            let idx = -1;
+            for (let i = 0; i < payload.length - 2; i++) {
+                if (payload[i] === 0x55 && payload[i+1] === 0xAA && payload[i+2] === 0x25) {
+                    idx = i;
+                    break;
                 }
             }
+            if (idx === -1) return;
 
-            let grid = document.getElementById('metrics-card');
-            grid.style.display = 'grid';
-            grid.innerHTML = `
-                <div class="metric-item"><span>Peso:</span><strong>${peso} kg</strong></div>
-                <div class="metric-item"><span>IMC:</span><strong>${bmi}</strong></div>
-                <div class="metric-item"><span>Grasa corporal:</span><strong>${grasa}%</strong></div>
-                <div class="metric-item"><span>Masa muscular:</span><strong>${musculo} kg</strong></div>
-                <div class="metric-item"><span>Agua corporal:</span><strong>${agua}%</strong></div>
-                <div class="metric-item"><span>Masa ósea:</span><strong>${hueso} kg</strong></div>
-                <div class="metric-item"><span>Grasa Visceral:</span><strong>${visceral}</strong></div>
-                <div class="metric-item"><span>Edad metabólica:</span><strong>${metabolic} a.</strong></div>
-                <div class="metric-item"><span>Clasificación física:</span><strong>${physique}</strong></div>
-            `;
+            const b = payload.slice(idx);
+            log(`[BLE] >>> Trama BIA 0x25 decodificada.`);
 
-            let genderByte = (selectedGender === 'female') ? 0x00 : 0x01;
-            generatedFitBase64 = buildFitBase64(timestamp, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique, genderByte);
+            const rawW = (b[9] << 8) | b[10];
+            if (rawW > 2000) {
+                finalWeightKg = (rawW / 100).toFixed(2);
+                pesoVal.innerText = `${finalWeightKg} kg`;
+            }
 
-            let btn = document.getElementById('btn-submit');
-            btn.disabled = false;
-            btn.innerText = "Subir medición a Garmin Connect";
-            showStatus("Archivo procesado. Listo para sincronizar.", "success");
+            const rawRA = b[13] | (b[14] << 8);
+            const rawLA = b[15] | (b[16] << 8);
+            const rawRL = b[17] | (b[18] << 8);
+            const rawLL = b[19] | (b[20] << 8);
 
-        } catch (err) {
-            showStatus(err.message, "error");
-        }
-    }
+            const rRA = Math.round(rawRA / 6);
+            const rLA = Math.round(rawLA / 6);
+            const rRL = Math.round(rawRL / 6);
+            const rLL = Math.round(rawLL / 6);
+            const rTR = 28;
 
-    function buildFitBase64(ts, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique, genderByte) {
-        let records = [];
+            raVal.innerText = `${rRA} Ω`;
+            laVal.innerText = `${rLA} Ω`;
+            rlVal.innerText = `${rRL} Ω`;
+            llVal.innerText = `${rLL} Ω`;
+            trVal.innerText = `${rTR} Ω`;
 
-        // 1. File ID Message (Global 0) - Garmin Index S2
-        records.push(
-            0x40, 0x00, 0x00, 0x00, 0x00, 0x05,
-            0x00, 0x01, 0x00,
-            0x01, 0x02, 0x84,
-            0x02, 0x02, 0x84,
-            0x03, 0x04, 0x8C,
-            0x04, 0x04, 0x86
-        );
-        let tsB = new Uint8Array(new Uint32Array([ts]).buffer);
-        records.push(0x00, 0x09, 0x01, 0x00, 0x7D, 0x09, 0xD2, 0x04, 0x00, 0x00, tsB[0], tsB[1], tsB[2], tsB[3]);
+            const rPromedio = Math.round((rRA + rLA + rRL + rLL) / 4);
+            impVal.innerText = `${rPromedio} Ω`;
 
-        // 2. User Profile Message (Global 3)
-        records.push(
-            0x40, 0x00, 0x00, 0x03, 0x00, 0x07,
-            0x01, 0x01, 0x00,
-            0x02, 0x01, 0x02,
-            0x04, 0x02, 0x84,
-            0x03, 0x01, 0x02,
-            0x11, 0x01, 0x00,
-            0xFE, 0x02, 0x84,
-            0x16, 0x02, 0x84
-        );
-        let wProf = new Uint8Array(new Uint16Array([Math.round(peso * 10)]).buffer);
-        records.push(0x00, genderByte, 0x28, wProf[0], wProf[1], 0x64, 0x5A, 0x00, 0x00, 0x00, 0x00);
+            const gender = parseInt(genderInput.value, 10);
+            const height = parseInt(heightInput.value, 10);
+            const age = parseInt(ageInput.value, 10);
 
-        // 3. Weight Scale Message (Global 30)
-        records.push(
-            0x40, 0x00, 0x00, 0x1E, 0x00, 0x0B,
-            0xFD, 0x04, 0x86,
-            0x0C, 0x02, 0x84,
-            0x00, 0x02, 0x84,
-            0x01, 0x02, 0x84,
-            0x02, 0x02, 0x84,
-            0x05, 0x02, 0x84,
-            0x04, 0x02, 0x84,
-            0x0A, 0x01, 0x02,
-            0x08, 0x01, 0x02,
-            0x0B, 0x01, 0x02,
-            0x0D, 0x02, 0x84
-        );
-        let wVal = new Uint8Array(new Uint16Array([Math.round(peso * 100)]).buffer);
-        let fVal = new Uint8Array(new Uint16Array([Math.round(grasa * 100)]).buffer);
-        let hVal = new Uint8Array(new Uint16Array([Math.round(agua * 100)]).buffer);
-        let mVal = new Uint8Array(new Uint16Array([Math.round(musculo * 100)]).buffer);
-        let bVal = new Uint8Array(new Uint16Array([Math.round(hueso * 100)]).buffer);
-        let bmiVal = new Uint8Array(new Uint16Array([Math.round(bmi * 10)]).buffer);
+            bleCalculatedMetrics = calculateBodyComposition(parseFloat(finalWeightKg || 73.45), height, age, gender, rPromedio);
 
-        records.push(
-            0x00,
-            tsB[0], tsB[1], tsB[2], tsB[3],
-            0x00, 0x00,
-            wVal[0], wVal[1], fVal[0], fVal[1], hVal[0], hVal[1], mVal[0], mVal[1], bVal[0], bVal[1],
-            metabolic & 0xFF, physique & 0xFF, visceral & 0xFF, bmiVal[0], bmiVal[1]
-        );
+            imcVal.innerText = bleCalculatedMetrics.bmi;
+            fatVal.innerText = `${bleCalculatedMetrics.fatPct} % (${bleCalculatedMetrics.fatKg} kg)`;
+            waterVal.innerText = `${bleCalculatedMetrics.waterPct} % (${bleCalculatedMetrics.waterKg} kg)`;
+            muscleVal.innerText = `${bleCalculatedMetrics.muscleKg} kg (${bleCalculatedMetrics.musclePct} %)`;
+            skeletalVal.innerText = `${bleCalculatedMetrics.skeletalKg} kg (${bleCalculatedMetrics.skeletalPct} %)`;
+            boneProtVal.innerText = `${bleCalculatedMetrics.boneKg} kg / ${bleCalculatedMetrics.proteinKg} kg`;
+            viscSubVal.innerText = `Nivel ${bleCalculatedMetrics.visceralLevel} / ${bleCalculatedMetrics.subcutPct} %`;
+            bmrVal.innerText = `${bleCalculatedMetrics.bmr} kcal`;
+            metAgeVal.innerText = `${bleCalculatedMetrics.metabolicAge} años`;
 
-        let dataLen = records.length;
-        let header = [
-            14, 0x20, 0xB3, 0x52,
-            dataLen & 0xFF, (dataLen >> 8) & 0xFF, (dataLen >> 16) & 0xFF, (dataLen >> 24) & 0xFF,
-            0x2E, 0x46, 0x49, 0x54, 0x00, 0x00
-        ];
+            statusEl.innerText = "✓ Medición completada con éxito";
+            btnSubirBle.style.display = "block";
 
-        let buf = new Uint8Array(header.length + dataLen + 2);
-        buf.set(header, 0);
-        buf.set(records, header.length);
-
-        let view = new DataView(buf.buffer);
-        view.setUint16(12, calculateCRC(buf, 0, 12), true);
-        view.setUint16(buf.length - 2, calculateCRC(buf, 0, buf.length - 2), true);
-
-        let binary = '';
-        for (let b = 0; b < buf.length; b++) binary += String.fromCharCode(buf[b]);
-        return btoa(binary);
-    }
-
-    document.getElementById('auth-form').addEventListener('submit', async function(e) {
-        e.preventDefault();
-
-        let email = emailInput.value.trim();
-        let password = passwordInput.value.trim();
-        let btn = document.getElementById('btn-submit');
-
-        if (!email || !password || !generatedFitBase64) {
-            showStatus("Introduce tus credenciales y selecciona un CSV válido.", "error");
-            return;
+            const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, b[9], b[10], 0xB5, 0x07, 0x02, 0x06]);
+            queueWrite(pktFinal, "Cierre final B2");
         }
 
-        if (rememberCheckbox.checked) {
-            localStorage.setItem('garmin_email', email);
-            localStorage.setItem('garmin_password', password);
-        } else {
-            localStorage.removeItem('garmin_email');
-            localStorage.removeItem('garmin_password');
+        async function handleIncomingBytes(bytes) {
+            const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+
+            if (hex === lastPrintedHex && bytes[2] === 0x21) return;
+            lastPrintedHex = hex;
+
+            if (bytes[0] === 0xAD || bytes[0] === 0xAE || bytes[0] === 0xAF) {
+                const tag = bytes[0].toString(16).toUpperCase();
+                fragMap[tag] = Array.from(bytes.slice(3));
+
+                if (bytes[0] === 0xAD && hex.includes("55 AA 26")) {
+                    const frameId = bytes[8];
+                    statusEl.innerText = `Midiendo segmentos (${frameId}/20)...`;
+                    const ackPkt = buildAckB6(frameId);
+                    queueWrite(ackPkt, `ACK B6 (${frameId})`);
+                }
+
+                if (fragMap['AD'] && fragMap['AE'] && fragMap['AF']) {
+                    const fullPayload = new Uint8Array([...fragMap['AD'], ...fragMap['AE'], ...fragMap['AF']]);
+                    parseCompleteBiaPayload(fullPayload);
+                    fragMap = {};
+                }
+                return;
+            }
+
+            if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
+                const rawWeight = (bytes[8] << 8) | bytes[9];
+                if (rawWeight > 1000) {
+                    finalWeightKg = (rawWeight / 100).toFixed(2);
+                    pesoVal.innerText = `${finalWeightKg} kg`;
+                }
+            } else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20 && !b2Sent) {
+                b2Sent = true;
+                queueWrite(PKT_B2_INIT, "B2");
+                statusEl.innerText = "Sujeta firme la barra... Escaneando electrodos";
+            }
         }
 
-        btn.disabled = true;
-        showStatus("Conectando con Garmin Connect y enviando archivo...", "loading");
-
-        try {
-            let res = await fetch('/api/upload', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    email: email,
-                    password: password,
-                    fitBase64: generatedFitBase64
-                })
+        async function setupDeviceConnection(device) {
+            device.addEventListener('gattserverdisconnected', () => {
+                log(`[BLE] Báscula desconectada.`);
+                btnConectar.disabled = false;
+                btnConectar.innerText = "Conectar Báscula (1 Clic)";
             });
 
-            let data = await res.json();
-            if (res.ok && data.success) {
-                showStatus("¡Medición sincronizada con éxito en Garmin Connect!", "success");
-                if (rememberCheckbox.checked) {
-                    authPanel.classList.add('hidden');
-                    toggleAuthBtn.innerText = '⚙️ Configurar credenciales de acceso';
-                }
-            } else {
-                showStatus("Error al sincronizar: " + (data.error || "Fallo desconocido."), "error");
-            }
-        } catch (err) {
-            showStatus("Error de red: " + err.message, "error");
-        } finally {
-            btn.disabled = false;
-        }
-    });
+            statusEl.innerText = "Conectando GATT...";
+            const server = await device.gatt.connect();
+            const service = await server.getPrimaryService(SERVICE_UUID);
+            const characteristics = await service.getCharacteristics();
 
-    function showStatus(msg, type) {
-        let el = document.getElementById('status');
-        el.className = 'status ' + type;
-        el.innerHTML = msg;
-    }
-</script>
+            for (let ch of characteristics) {
+                const props = ch.properties;
+                if (props.notify || props.indicate) {
+                    try {
+                        await ch.startNotifications();
+                        ch.addEventListener('characteristicvaluechanged', (evt) => {
+                            handleIncomingBytes(new Uint8Array(evt.target.value.buffer));
+                        });
+                    } catch (e) {}
+                }
+                if (props.write || props.writeWithoutResponse) {
+                    writeCharGlobal = ch;
+                }
+            }
+
+            queueWrite(PKT_INIT_FD, "Saludo FD 37");
+            statusEl.innerText = "Sujeta la barra y súbete descalzo";
+            log(`[BLE] Conexión establecida.`);
+        }
+
+        btnConectar.addEventListener('click', async () => {
+            saveCurrentProfile();
+            btnConectar.disabled = true;
+            btnConectar.innerText = "Conectando...";
+            statusEl.innerText = "Buscando báscula...";
+            b2Sent = false;
+            fragMap = {};
+            writeQueue = [];
+
+            try {
+                let device = null;
+                if (navigator.bluetooth.getDevices) {
+                    const known = await navigator.bluetooth.getDevices();
+                    device = known.find(d => d.name && (d.name.includes("R-MSC02") || d.name.startsWith("R-")));
+                    if (device) log(`[BLE] Dispositivo recordado detectado: ${device.name}`);
+                }
+
+                if (!device) {
+                    log(`[BLE] Solicitando autorización en navegador...`);
+                    device = await navigator.bluetooth.requestDevice({
+                        filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
+                        optionalServices: [SERVICE_UUID]
+                    });
+                }
+
+                await setupDeviceConnection(device);
+
+            } catch (err) {
+                btnConectar.disabled = false;
+                btnConectar.innerText = "Conectar Báscula (1 Clic)";
+                statusEl.innerText = "Desconectado";
+                log(`[BLE] ERROR: ${err.message}`);
+            }
+        });
+
+        // ==========================================
+        //  LÓGICA CSV HISTÓRICO
+        // ==========================================
+        let csvMetricsParsed = null;
+        let csvTimestampParsed = Date.now();
+
+        document.getElementById('file-input').addEventListener('change', function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            document.getElementById('csv-label').innerText = `Archivo: ${file.name}`;
+            const reader = new FileReader();
+            reader.onload = function (event) {
+                try {
+                    const text = event.target.result;
+                    const lines = text.split(/\r?\n/).filter(l => l.trim() !== "");
+                    if (lines.length < 2) throw new Error("CSV sin suficientes filas.");
+
+                    const header = lines[0].split(',');
+                    const row = lines[1].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+
+                    function getCol(name) {
+                        const idx = header.findIndex(h => h.includes(name));
+                        return idx !== -1 ? row[idx].replace(/"/g, '').trim() : '';
+                    }
+
+                    const fechaStr = getCol('Fecha');
+                    const horaStr = getCol('Hora');
+                    const peso = parseFloat(getCol('Peso'));
+                    const grasa = parseFloat(getCol('Porcentaje de grasa corporal'));
+                    const agua = parseFloat(getCol('Porcentaje de agua corporal'));
+                    const musculoKg = parseFloat(getCol('Masa muscular(kg)'));
+                    const huesoKg = parseFloat(getCol('Masa Ã³sea(kg)') || getCol('Masa ósea(kg)'));
+                    const visceral = parseInt(getCol('Grasa visceral'), 10) || 4;
+
+                    if (isNaN(peso)) throw new Error("No se pudo extraer el peso del CSV.");
+
+                    // Parsear timestamp si existe fecha y hora
+                    if (fechaStr && horaStr) {
+                        const partesF = fechaStr.split('.');
+                        if (partesF.length === 3) {
+                            const dStr = `${partesF[0]}-${partesF[1]}-${partesF[2]}T${horaStr}`;
+                            csvTimestampParsed = new Date(dStr).getTime() || Date.now();
+                        }
+                    }
+
+                    csvMetricsParsed = {
+                        weight: peso,
+                        fatPct: isNaN(grasa) ? 17.7 : grasa,
+                        waterPct: isNaN(agua) ? 60.3 : agua,
+                        muscleKg: isNaN(musculoKg) ? 56.4 : musculoKg,
+                        boneKg: isNaN(huesoKg) ? 4.1 : huesoKg,
+                        visceralLevel: visceral
+                    };
+
+                    document.getElementById('csv-fecha').innerText = `${fechaStr} ${horaStr}`;
+                    document.getElementById('csv-peso').innerText = `${peso} kg`;
+                    document.getElementById('csv-grasa').innerText = `${csvMetricsParsed.fatPct} %`;
+                    document.getElementById('csv-agua').innerText = `${csvMetricsParsed.waterPct} %`;
+                    document.getElementById('csv-summary').style.display = 'block';
+
+                    log(`[CSV] Medición parseada con éxito (${fechaStr} ${horaStr} - ${peso} kg).`);
+
+                } catch (err) {
+                    alert("Error al leer el archivo CSV: " + err.message);
+                    log(`[CSV] Error: ${err.message}`);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // ==========================================
+        //  SUBIDA A GARMIN CONNECT (API /api/upload)
+        // ==========================================
+        async function uploadMetricsToGarmin(metrics, timestamp, btnElement) {
+            saveCurrentProfile();
+            const email = garminEmail.value.trim();
+            const password = garminPassword.value.trim();
+
+            if (!email || !password) {
+                alert("Por favor, introduce tu email y contraseña de Garmin Connect en la sección superior.");
+                return;
+            }
+
+            btnElement.disabled = true;
+            const originalText = btnElement.innerText;
+            btnElement.innerText = "Subiendo a Garmin...";
+
+            try {
+                log(`[GARMIN] Compilando archivo FIT binario...`);
+                const fitBytes = FitWeightEncoder.encode(metrics, timestamp);
+                const fitBase64 = FitWeightEncoder.toBase64(fitBytes);
+
+                log(`[GARMIN] FIT generado (${fitBytes.length} bytes). Enviando a /api/upload...`);
+
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, fitBase64 })
+                });
+
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    log(`[GARMIN] ✓ ¡Subido con éxito a Garmin Connect!`);
+                    alert("¡Medición sincronizada con éxito en Garmin Connect!");
+                } else {
+                    throw new Error(data.error || "Fallo devuelto por el servidor.");
+                }
+
+            } catch (e) {
+                log(`[GARMIN] Error en la subida: ${e.message}`);
+                alert("Error al sincronizar con Garmin: " + e.message);
+            } finally {
+                btnElement.disabled = false;
+                btnElement.innerText = originalText;
+            }
+        }
+
+        btnSubirBle.addEventListener('click', () => {
+            if (bleCalculatedMetrics) uploadMetricsToGarmin(bleCalculatedMetrics, Date.now(), btnSubirBle);
+        });
+
+        btnSubirCsv.addEventListener('click', () => {
+            if (csvMetricsParsed) uploadMetricsToGarmin(csvMetricsParsed, csvTimestampParsed, btnSubirCsv);
+        });
+    </script>
 </body>
 </html>
