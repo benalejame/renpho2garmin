@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 Bridge [v6.0]</title>
+    <title>Renpho R-MSC02 Bridge [v6.2]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -25,15 +25,16 @@
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
             margin-bottom: 14px;
         }
-        .badge {
+        .version-badge {
             display: inline-block;
             background: #0284c7;
-            color: white;
-            font-size: 11px;
+            color: #ffffff;
+            font-size: 12px;
             font-weight: 700;
-            padding: 2px 8px;
+            padding: 4px 10px;
             border-radius: 9999px;
-            margin-bottom: 6px;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
         }
         h2 { margin: 0 0 12px 0; font-size: 19px; text-align: center; }
         .form-row {
@@ -95,7 +96,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="badge">v6.0</span>
+        <span class="version-badge">v6.2</span>
         <h2>Configuración de Usuario</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -112,7 +113,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v6.0]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v6.2]</button>
     </div>
 
     <div class="card">
@@ -132,11 +133,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v6.0 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v6.2 lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v6.0";
+        const APP_VERSION = "v6.2";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -160,13 +161,14 @@
         const CHAR_WRITE_UUID = 0x2a11;
 
         let writeCharGlobal = null;
-        let profileSentForCurrentWeight = false;
+        let profileSent = false;
         let lastPrintedHex = "";
+        let stableCount = 0;
+        let lastRawWeight = 0;
 
-        // Trama de activación en estabilización
-        function buildTriggerPayload(gender, age, height) {
-            // Cabecera interactiva estándar Chipsea/Yolanda 0x11
-            const p = [0x55, 0xAA, 0x11, 0x00, 0x05, 0x01, gender, age, height, 0x01];
+        // Formato de activación BIA Yolanda 0x22
+        function buildBiaTriggerPacket(gender, age, height) {
+            const p = [0x55, 0xAA, 0x22, 0x00, 0x06, 0x01, gender, age, height, 0x00];
             let sum = 0;
             for (let i = 0; i < p.length; i++) sum += p[i];
             p.push(sum & 0xFF);
@@ -184,7 +186,9 @@
 
             logEl.innerText = `[${APP_VERSION}] Iniciando conexión...`;
             statusEl.innerText = "Buscando báscula...";
-            profileSentForCurrentWeight = false;
+            profileSent = false;
+            stableCount = 0;
+            lastRawWeight = 0;
             lastPrintedHex = "";
 
             try {
@@ -196,7 +200,7 @@
                 device.addEventListener('gattserverdisconnected', () => {
                     log(`[${APP_VERSION}] Báscula desconectada.`);
                     statusEl.innerText = "Báscula desconectada";
-                    profileSentForCurrentWeight = false;
+                    profileSent = false;
                 });
 
                 statusEl.innerText = "Conectando GATT...";
@@ -208,14 +212,14 @@
 
                 await notifyChar.startNotifications();
 
-                // Handshake mínimo inicial
+                // Handshake inicial
                 try {
                     await writeCharGlobal.writeValue(new Uint8Array([0x02, 0x00, 0x00, 0x02]));
-                    log(`[${APP_VERSION}] Handshake 0x02 enviado.`);
+                    log(`[${APP_VERSION}] Handshake enviado.`);
                 } catch (e) {}
 
-                statusEl.innerText = "Súbete descalzo a la báscula";
-                log(`[${APP_VERSION}] Esperando peso para enviar comando BIA interactivo...`);
+                statusEl.innerText = "Súbete descalzo y no te muevas";
+                log(`[${APP_VERSION}] Esperando estabilidad real para enviar BIA...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -231,37 +235,44 @@
                         const wKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${wKg} kg`;
 
-                        // Detección directa en flujo continuo si viene con datos
                         const impDirect = (bytes[6] << 8) | bytes[7];
                         if (impDirect > 0) {
                             impVal.innerText = `${impDirect} Ω`;
                         }
 
-                        // DETECCIÓN DE PESO ESTABILIZADO (bytes[5] == 0x01 y peso > 10 kg)
-                        if (bytes[5] === 0x01 && rawWeight > 1000 && !profileSentForCurrentWeight) {
-                            profileSentForCurrentWeight = true;
-                            statusEl.innerText = "Peso fijado. Activando BIA...";
-                            log(`[${APP_VERSION}] Peso fijo (${wKg} kg). Enviando perfil a 0x2A11...`);
+                        // Verificación de estabilidad estricta (mismo peso durante al menos 3 tramas)
+                        if (rawWeight > 2000) {
+                            if (Math.abs(rawWeight - lastRawWeight) <= 10) {
+                                stableCount++;
+                            } else {
+                                stableCount = 0;
+                            }
+                            lastRawWeight = rawWeight;
 
-                            try {
-                                const triggerPkt = buildTriggerPayload(gender, age, height);
-                                await writeCharGlobal.writeValue(triggerPkt);
-                                log(`[${APP_VERSION}] Inyección BIA enviada: ${Array.from(triggerPkt).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}`);
-                            } catch (errW) {
-                                log(`[${APP_VERSION}] Error enviando perfil: ${errW.message}`);
+                            if (stableCount >= 3 && !profileSent) {
+                                profileSent = true;
+                                statusEl.innerText = "Peso estabilizado. Disparando análisis BIA...";
+                                log(`[${APP_VERSION}] Peso confirmado (${wKg} kg). Enviando paquete 0x22...`);
+
+                                try {
+                                    const pkt = buildBiaTriggerPacket(gender, age, height);
+                                    await writeCharGlobal.writeValue(pkt);
+                                    log(`[${APP_VERSION}] Enviado: ${Array.from(pkt).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}`);
+                                } catch (errW) {
+                                    log(`[${APP_VERSION}] Error escritura: ${errW.message}`);
+                                }
                             }
                         }
                     } 
-                    // TRAMA DE RESPUESTA A LA ACTIVACIÓN O TRAMA FINAL
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA) {
-                        log(`[${APP_VERSION}] >>> TRAMA ESPECIAL RECIBIDA: ${hex}`);
-                        statusEl.innerText = "✓ Trama de análisis recibida";
+                        log(`[${APP_VERSION}] >>> TRAMA FINAL RECIBIDA: ${hex}`);
+                        statusEl.innerText = "✓ Medición completada";
 
                         for (let i = 4; i < bytes.length - 2; i++) {
                             const val = (bytes[i] << 8) | bytes[i+1];
                             if (val >= 350 && val <= 1100) {
                                 impVal.innerText = `${val} Ω`;
-                                log(`[${APP_VERSION}] -> Impedancia detectada: ${val} Ω`);
+                                log(`[${APP_VERSION}] -> Impedancia: ${val} Ω`);
                                 break;
                             }
                         }
