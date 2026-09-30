@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Captura Completa R-MSC02</title>
+    <title>Renpho R-MSC02 Bridge [v6.0]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -24,6 +24,16 @@
             box-sizing: border-box;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
             margin-bottom: 14px;
+        }
+        .badge {
+            display: inline-block;
+            background: #0284c7;
+            color: white;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            margin-bottom: 6px;
         }
         h2 { margin: 0 0 12px 0; font-size: 19px; text-align: center; }
         .form-row {
@@ -84,8 +94,9 @@
 </head>
 <body>
 
-    <div class="card">
-        <h2>Lector Total R-MSC02</h2>
+    <div class="card" style="text-align: center;">
+        <span class="badge">v6.0</span>
+        <h2>Configuración de Usuario</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
             <select id="gender">
@@ -101,7 +112,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar</button>
+        <button id="btn-conectar">Conectar e Iniciar [v6.0]</button>
     </div>
 
     <div class="card">
@@ -121,10 +132,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Esperando conexión...</pre>
+        <pre id="log">Versión v6.0 lista. Esperando conexión...</pre>
     </div>
 
     <script>
+        const APP_VERSION = "v6.0";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -147,7 +159,19 @@
         const CHAR_NOTIFY_UUID = 0x2a10;
         const CHAR_WRITE_UUID = 0x2a11;
 
+        let writeCharGlobal = null;
+        let profileSentForCurrentWeight = false;
         let lastPrintedHex = "";
+
+        // Trama de activación en estabilización
+        function buildTriggerPayload(gender, age, height) {
+            // Cabecera interactiva estándar Chipsea/Yolanda 0x11
+            const p = [0x55, 0xAA, 0x11, 0x00, 0x05, 0x01, gender, age, height, 0x01];
+            let sum = 0;
+            for (let i = 0; i < p.length; i++) sum += p[i];
+            p.push(sum & 0xFF);
+            return new Uint8Array(p);
+        }
 
         document.getElementById('btn-conectar').addEventListener('click', async () => {
             const gender = parseInt(genderInput.value, 10);
@@ -158,8 +182,9 @@
             localStorage.setItem('r_height', height);
             localStorage.setItem('r_age', age);
 
-            logEl.innerText = "Iniciando...";
+            logEl.innerText = `[${APP_VERSION}] Iniciando conexión...`;
             statusEl.innerText = "Buscando báscula...";
+            profileSentForCurrentWeight = false;
             lastPrintedHex = "";
 
             try {
@@ -169,8 +194,9 @@
                 });
 
                 device.addEventListener('gattserverdisconnected', () => {
-                    log("[INFO] Dispositivo desconectado del enlace BLE.");
+                    log(`[${APP_VERSION}] Báscula desconectada.`);
                     statusEl.innerText = "Báscula desconectada";
+                    profileSentForCurrentWeight = false;
                 });
 
                 statusEl.innerText = "Conectando GATT...";
@@ -178,58 +204,64 @@
 
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 const notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
-                const writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
+                writeCharGlobal = await service.getCharacteristic(CHAR_WRITE_UUID);
 
                 await notifyChar.startNotifications();
 
-                // Enviar sincronización preliminar
+                // Handshake mínimo inicial
                 try {
-                    await writeChar.writeValue(new Uint8Array([0x02, 0x00, 0x00, 0x02]));
-                    log("Handshake 0x02 enviado.");
+                    await writeCharGlobal.writeValue(new Uint8Array([0x02, 0x00, 0x00, 0x02]));
+                    log(`[${APP_VERSION}] Handshake 0x02 enviado.`);
                 } catch (e) {}
 
-                statusEl.innerText = "¡Súbete descalzo y no bajes hasta que termine la animación!";
-                log("Escuchando flujo completo (incluyendo fin de animación)...");
+                statusEl.innerText = "Súbete descalzo a la báscula";
+                log(`[${APP_VERSION}] Esperando peso para enviar comando BIA interactivo...`);
 
-                notifyChar.addEventListener('characteristicvaluechanged', (event) => {
+                notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
                     const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
 
-                    // Filtrar tramas dinámicas idénticas repetidas para no saturar el log
-                    if (hex === lastPrintedHex && bytes[2] === 0x21) {
-                        return;
-                    }
+                    if (hex === lastPrintedHex && bytes[2] === 0x21) return;
                     lastPrintedHex = hex;
 
                     log(`[RX]: ${hex}`);
 
-                    // Si es trama de peso dinámico estándar 0x21
                     if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
                         const wKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${wKg} kg`;
 
-                        // Si los bytes de impedancia dejan de ser 00 00
-                        const possibleImp = (bytes[6] << 8) | bytes[7];
-                        if (possibleImp > 0) {
-                            impVal.innerText = `${possibleImp} Ω`;
+                        // Detección directa en flujo continuo si viene con datos
+                        const impDirect = (bytes[6] << 8) | bytes[7];
+                        if (impDirect > 0) {
+                            impVal.innerText = `${impDirect} Ω`;
                         }
 
-                        if (bytes[5] === 0x01) {
-                            statusEl.innerText = "Peso fijado. Esperando animación BIA...";
+                        // DETECCIÓN DE PESO ESTABILIZADO (bytes[5] == 0x01 y peso > 10 kg)
+                        if (bytes[5] === 0x01 && rawWeight > 1000 && !profileSentForCurrentWeight) {
+                            profileSentForCurrentWeight = true;
+                            statusEl.innerText = "Peso fijado. Activando BIA...";
+                            log(`[${APP_VERSION}] Peso fijo (${wKg} kg). Enviando perfil a 0x2A11...`);
+
+                            try {
+                                const triggerPkt = buildTriggerPayload(gender, age, height);
+                                await writeCharGlobal.writeValue(triggerPkt);
+                                log(`[${APP_VERSION}] Inyección BIA enviada: ${Array.from(triggerPkt).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}`);
+                            } catch (errW) {
+                                log(`[${APP_VERSION}] Error enviando perfil: ${errW.message}`);
+                            }
                         }
                     } 
-                    // TRAMA DIFERENTE (0x22, 0x23, 0x24 o paquete final post-animación)
+                    // TRAMA DE RESPUESTA A LA ACTIVACIÓN O TRAMA FINAL
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA) {
-                        log(`>>> ¡TRAMA ESPECIAL DETECTADA!: ${hex}`);
-                        statusEl.innerText = "✓ Trama de análisis corporal recibida";
+                        log(`[${APP_VERSION}] >>> TRAMA ESPECIAL RECIBIDA: ${hex}`);
+                        statusEl.innerText = "✓ Trama de análisis recibida";
 
-                        // Inspeccionar pares de bytes en busca de la resistencia en ohmios
                         for (let i = 4; i < bytes.length - 2; i++) {
                             const val = (bytes[i] << 8) | bytes[i+1];
                             if (val >= 350 && val <= 1100) {
                                 impVal.innerText = `${val} Ω`;
-                                log(`   -> Impedancia localizada: ${val} Ω (en bytes ${i}-${i+1})`);
+                                log(`[${APP_VERSION}] -> Impedancia detectada: ${val} Ω`);
                                 break;
                             }
                         }
@@ -238,7 +270,7 @@
 
             } catch (err) {
                 statusEl.innerText = "Error";
-                log(`ERROR: ${err.message}`);
+                log(`[${APP_VERSION}] ERROR: ${err.message}`);
             }
         });
     </script>
