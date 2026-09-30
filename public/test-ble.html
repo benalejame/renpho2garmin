@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 Bridge</title>
+    <title>Captura Completa R-MSC02</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -20,12 +20,12 @@
             border-radius: 12px;
             padding: 18px;
             width: 100%;
-            max-width: 420px;
+            max-width: 440px;
             box-sizing: border-box;
             box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
             margin-bottom: 14px;
         }
-        h2 { margin: 0 0 12px 0; font-size: 20px; text-align: center; }
+        h2 { margin: 0 0 12px 0; font-size: 19px; text-align: center; }
         .form-row {
             display: flex;
             justify-content: space-between;
@@ -62,15 +62,15 @@
             text-align: center;
             margin-top: 10px;
         }
-        .metric-title { font-size: 13px; color: #94a3b8; }
-        .metric-num { font-size: 32px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
+        .metric-title { font-size: 12px; color: #94a3b8; letter-spacing: 0.5px; }
+        .metric-num { font-size: 30px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
         pre {
             background: #020617;
             padding: 12px;
             border-radius: 8px;
             font-family: monospace;
             font-size: 11px;
-            max-height: 220px;
+            max-height: 250px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -85,7 +85,7 @@
 <body>
 
     <div class="card">
-        <h2>Perfil de Usuario</h2>
+        <h2>Lector Total R-MSC02</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
             <select id="gender">
@@ -101,21 +101,21 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar Medición</button>
+        <button id="btn-conectar">Conectar e Iniciar</button>
     </div>
 
     <div class="card">
         <div class="display-val">
             <div>
-                <div class="metric-title">PESO FINAL</div>
+                <div class="metric-title">PESO</div>
                 <div class="metric-num" id="peso-val">--.-- kg</div>
             </div>
             <div>
-                <div class="metric-title">IMPEDANCIA</div>
+                <div class="metric-title">IMPEDANCIA (BIA)</div>
                 <div class="metric-num" id="imp-val">-- Ω</div>
             </div>
         </div>
-        <div id="status" style="text-align: center; font-size: 13px; color: #94a3b8; margin-top: 8px;">
+        <div id="status" style="text-align: center; font-size: 13px; color: #94a3b8; margin-top: 10px;">
             Desconectado
         </div>
     </div>
@@ -147,32 +147,7 @@
         const CHAR_NOTIFY_UUID = 0x2a10;
         const CHAR_WRITE_UUID = 0x2a11;
 
-        // Construye el paquete de usuario con el formato estándar Chipsea CS125x / Yolanda
-        function buildUserProfile(gender, age, height) {
-            const p = [0x55, 0xAA, 0x22, 0x00, 0x06, 0x01, gender, age, height, 0x00];
-            let sum = 0;
-            for (let i = 0; i < p.length; i++) sum += p[i];
-            p.push(sum & 0xFF);
-            return new Uint8Array(p);
-        }
-
-        // Paquete de sincronización horaria 0x20
-        function buildSyncClock() {
-            const now = new Date();
-            const p = [
-                0x55, 0xAA, 0x20, 0x00, 0x06,
-                now.getFullYear() - 2000,
-                now.getMonth() + 1,
-                now.getDate(),
-                now.getHours(),
-                now.getMinutes(),
-                now.getSeconds()
-            ];
-            let sum = 0;
-            for (let i = 0; i < p.length; i++) sum += p[i];
-            p.push(sum & 0xFF);
-            return new Uint8Array(p);
-        }
+        let lastPrintedHex = "";
 
         document.getElementById('btn-conectar').addEventListener('click', async () => {
             const gender = parseInt(genderInput.value, 10);
@@ -185,6 +160,7 @@
 
             logEl.innerText = "Iniciando...";
             statusEl.innerText = "Buscando báscula...";
+            lastPrintedHex = "";
 
             try {
                 const device = await navigator.bluetooth.requestDevice({
@@ -192,7 +168,12 @@
                     optionalServices: [SERVICE_UUID]
                 });
 
-                statusEl.innerText = "Conectando al servidor GATT...";
+                device.addEventListener('gattserverdisconnected', () => {
+                    log("[INFO] Dispositivo desconectado del enlace BLE.");
+                    statusEl.innerText = "Báscula desconectada";
+                });
+
+                statusEl.innerText = "Conectando GATT...";
                 const server = await device.gatt.connect();
 
                 const service = await server.getPrimaryService(SERVICE_UUID);
@@ -201,45 +182,56 @@
 
                 await notifyChar.startNotifications();
 
-                // Secuencia de activación secuencial
+                // Enviar sincronización preliminar
                 try {
-                    // 1. Handshake inicial
                     await writeChar.writeValue(new Uint8Array([0x02, 0x00, 0x00, 0x02]));
-                    log("1/3 Handshake enviado.");
-                    await new Promise(r => setTimeout(r, 100));
+                    log("Handshake 0x02 enviado.");
+                } catch (e) {}
 
-                    // 2. Sincronización de reloj (0x20)
-                    await writeChar.writeValue(buildSyncClock());
-                    log("2/3 Sincronización de reloj enviada.");
-                    await new Promise(r => setTimeout(r, 100));
-
-                    // 3. Envío de perfil de usuario (0x22)
-                    const userPkt = buildUserProfile(gender, age, height);
-                    await writeChar.writeValue(userPkt);
-                    log(`3/3 Perfil enviado: ${Array.from(userPkt).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}`);
-                } catch (e) {
-                    log(`Aviso escritura: ${e.message}`);
-                }
-
-                statusEl.innerText = "¡Súbete descalzo y no bajes hasta completar!";
-                log("Escuchando flujo de tramas...");
+                statusEl.innerText = "¡Súbete descalzo y no bajes hasta que termine la animación!";
+                log("Escuchando flujo completo (incluyendo fin de animación)...");
 
                 notifyChar.addEventListener('characteristicvaluechanged', (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
                     const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
 
-                    log(`>>> TRAMA: ${hex}`);
+                    // Filtrar tramas dinámicas idénticas repetidas para no saturar el log
+                    if (hex === lastPrintedHex && bytes[2] === 0x21) {
+                        return;
+                    }
+                    lastPrintedHex = hex;
 
-                    if (bytes.length >= 10 && bytes[0] === 0x55 && bytes[1] === 0xAA) {
+                    log(`[RX]: ${hex}`);
+
+                    // Si es trama de peso dinámico estándar 0x21
+                    if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
                         const wKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${wKg} kg`;
 
-                        // Extraer valor de impedancia en ohmios
-                        const imp = (bytes[6] << 8) | bytes[7];
-                        if (imp > 0) {
-                            impVal.innerText = `${imp} Ω`;
-                            statusEl.innerText = "✓ Medición completada con impedancia";
+                        // Si los bytes de impedancia dejan de ser 00 00
+                        const possibleImp = (bytes[6] << 8) | bytes[7];
+                        if (possibleImp > 0) {
+                            impVal.innerText = `${possibleImp} Ω`;
+                        }
+
+                        if (bytes[5] === 0x01) {
+                            statusEl.innerText = "Peso fijado. Esperando animación BIA...";
+                        }
+                    } 
+                    // TRAMA DIFERENTE (0x22, 0x23, 0x24 o paquete final post-animación)
+                    else if (bytes[0] === 0x55 && bytes[1] === 0xAA) {
+                        log(`>>> ¡TRAMA ESPECIAL DETECTADA!: ${hex}`);
+                        statusEl.innerText = "✓ Trama de análisis corporal recibida";
+
+                        // Inspeccionar pares de bytes en busca de la resistencia en ohmios
+                        for (let i = 4; i < bytes.length - 2; i++) {
+                            const val = (bytes[i] << 8) | bytes[i+1];
+                            if (val >= 350 && val <= 1100) {
+                                impVal.innerText = `${val} Ω`;
+                                log(`   -> Impedancia localizada: ${val} Ω (en bytes ${i}-${i+1})`);
+                                break;
+                            }
                         }
                     }
                 });
