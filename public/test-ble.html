@@ -1,9 +1,9 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 Bridge [v6.4]</title>
+    <title>Renpho R-MSC02 Bridge [v6.5]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -67,6 +67,13 @@
             margin-top: 8px;
         }
         button:active { background: #0369a1; }
+        .btn-secundario {
+            background: #334155;
+            padding: 10px;
+            font-size: 13px;
+            margin-top: 8px;
+        }
+        .btn-secundario:active { background: #1e293b; }
         .display-val {
             display: flex;
             justify-content: space-around;
@@ -105,7 +112,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v6.4</span>
+        <span class="version-badge">v6.5</span>
         <h2>Configuración de Usuario</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -122,7 +129,8 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v6.4]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v6.5]</button>
+        <button id="btn-forzar" class="btn-secundario">Forzar Envío Perfil BIA</button>
     </div>
 
     <div class="card">
@@ -156,11 +164,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v6.4 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v6.5 lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v6.4";
+        const APP_VERSION = "v6.5";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -200,15 +208,35 @@
             return new Uint8Array(arr);
         }
 
-        // Handshake nativo Chipsea
         function getNativeChipseaHandshake() {
             return new Uint8Array([0xFD, 0x37, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38]);
         }
 
-        // Trama nativa de perfil Chipsea CS125x (0x11 con longitud 5)
         function buildChipseaProfile(gender, age, height) {
             return buildChecksum([0x55, 0xAA, 0x11, 0x00, 0x05, 0x01, gender, age, height, 0x00]);
         }
+
+        async function triggerProfileSend() {
+            if (!writeCharGlobal) {
+                log(`[${APP_VERSION}] Báscula no conectada.`);
+                return;
+            }
+            const gender = parseInt(genderInput.value, 10);
+            const height = parseInt(heightInput.value, 10);
+            const age = parseInt(ageInput.value, 10);
+
+            try {
+                const pkt = buildChipseaProfile(gender, age, height);
+                await writeCharGlobal.writeValue(pkt);
+                profileSent = true;
+                statusEl.innerText = "Perfil BIA inyectado. Analizando...";
+                log(`[${APP_VERSION}] Perfil 0x11 enviado: ${Array.from(pkt).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
+            } catch (err) {
+                log(`[${APP_VERSION}] Error envío: ${err.message}`);
+            }
+        }
+
+        document.getElementById('btn-forzar').addEventListener('click', triggerProfileSend);
 
         function calculateBodyComposition(weight, height, age, gender, r) {
             const heightM = height / 100;
@@ -267,16 +295,15 @@
 
                 await notifyChar.startNotifications();
 
-                // 1. Envío de handshake nativo 0xFD 0x37
                 try {
                     await writeCharGlobal.writeValue(getNativeChipseaHandshake());
-                    log(`[${APP_VERSION}] Handshake nativo 0xFD enviado.`);
+                    log(`[${APP_VERSION}] Handshake 0xFD enviado.`);
                 } catch (e) {
-                    log(`[${APP_VERSION}] Fallo handshake FD: ${e.message}`);
+                    log(`[${APP_VERSION}] Fallo handshake: ${e.message}`);
                 }
 
                 statusEl.innerText = "Súbete descalzo a la báscula";
-                log(`[${APP_VERSION}] Esperando peso estable...`);
+                log(`[${APP_VERSION}] Esperando peso estable (tolerancia adaptativa)...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -287,13 +314,11 @@
 
                     log(`[RX]: ${hex}`);
 
-                    // Trama continua 0x21
                     if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
                         finalWeightKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${finalWeightKg} kg`;
 
-                        // Si los bytes 6 y 7 traen la impedancia
                         const impDirect = (bytes[6] << 8) | bytes[7];
                         if (impDirect > 0) {
                             impVal.innerText = `${impDirect} Ω`;
@@ -303,9 +328,9 @@
                             muscleVal.innerText = `${comp.muscle} kg`;
                         }
 
-                        // Verificación de estabilidad
+                        // Verificación de estabilidad con tolerancia ampliada a +-30
                         if (rawWeight > 2000) {
-                            if (Math.abs(rawWeight - lastRawWeight) <= 10) {
+                            if (Math.abs(rawWeight - lastRawWeight) <= 30) {
                                 stableCount++;
                             } else {
                                 stableCount = 0;
@@ -314,22 +339,14 @@
 
                             if (stableCount >= 3 && !profileSent) {
                                 profileSent = true;
-                                statusEl.innerText = "Peso estabilizado. Inyectando perfil Chipsea...";
-                                log(`[${APP_VERSION}] Peso fijo (${finalWeightKg} kg). Enviando perfil...`);
-
-                                try {
-                                    const pkt = buildChipseaProfile(gender, age, height);
-                                    await writeCharGlobal.writeValue(pkt);
-                                    log(`[${APP_VERSION}] Perfil nativo inyectado: ${Array.from(pkt).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
-                                } catch (errW) {
-                                    log(`[${APP_VERSION}] Error escritura perfil: ${errW.message}`);
-                                }
+                                statusEl.innerText = "Estabilidad detectada. Enviando perfil...";
+                                log(`[${APP_VERSION}] Peso estabilizado (${finalWeightKg} kg). Inyectando...`);
+                                await triggerProfileSend();
                             }
                         }
                     } 
-                    // TRAMA DE RESPUESTA BIA O FINAL
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA) {
-                        log(`[${APP_VERSION}] >>> ¡TRAMA BIA RECIBIDA!: ${hex}`);
+                        log(`[${APP_VERSION}] >>> ¡TRAMA BIA / ESPECIAL!: ${hex}`);
                         statusEl.innerText = "✓ Medición BIA completada";
 
                         for (let i = 4; i < bytes.length - 2; i++) {
@@ -338,7 +355,7 @@
                                 impVal.innerText = `${val} Ω`;
                                 log(`[${APP_VERSION}] -> Impedancia: ${val} Ω`);
 
-                                const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.2), height, age, gender, val);
+                                const comp = calculateBodyComposition(parseFloat(finalWeightKg || 72.8), height, age, gender, val);
                                 fatVal.innerText = `${comp.fat} %`;
                                 waterVal.innerText = `${comp.water} %`;
                                 muscleVal.innerText = `${comp.muscle} kg`;
