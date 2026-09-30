@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 8E [v7.2]</title>
+    <title>Renpho R-MSC02 8E [v7.3]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -107,7 +107,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v7.2 (Secuencia Bloque 8E)</span>
+        <span class="version-badge">v7.3 (Disparo Temprano Oficial)</span>
         <h2>Perfil Segmental</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -124,7 +124,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v7.2]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v7.3]</button>
     </div>
 
     <div class="card">
@@ -170,11 +170,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v7.2 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v7.3 lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v7.2";
+        const APP_VERSION = "v7.3";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -204,25 +204,16 @@
         const CHAR_WRITE_UUID = 0x2a11;
 
         let writeCharGlobal = null;
-        let sequenceTriggered = false;
+        let earlySequenceSent = false;
         let lastPrintedHex = "";
-        let stableCount = 0;
-        let prevWeightRaw = 0;
+        let finalWeightKg = 0;
 
+        // Tramas extraídas del log oficial
         const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
         const PKT_B3_INIT = new Uint8Array([0x55, 0xAA, 0xB3, 0x00, 0x0B, 0x01, 0x07, 0x01, 0x01, 0x6A, 0xBD, 0x26, 0xF3, 0x00, 0x78, 0x00, 0x7F]);
+        const PKT_B2_INIT = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, 0x1C, 0x4D, 0xB5, 0x07, 0x02, 0xB4]);
         const PKT_ACK_B6_FRAME1 = new Uint8Array([0x55, 0xAA, 0xB6, 0x00, 0x02, 0x01, 0x01, 0xB9]);
         const PKT_ACK_B6_FRAME2 = new Uint8Array([0x55, 0xAA, 0xB6, 0x00, 0x02, 0x02, 0x01, 0xBA]);
-
-        function buildB2Packet(rawWeight) {
-            const wHi = (rawWeight >> 8) & 0xFF;
-            const wLo = rawWeight & 0xFF;
-            const p = [0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, wHi, wLo, 0xB5, 0x07, 0x02];
-            let sum = 0;
-            for (let b of p) sum += b;
-            p.push(sum & 0xFF);
-            return new Uint8Array(p);
-        }
 
         function calculateBodyComposition(weight, height, age, gender, r) {
             const heightM = height / 100;
@@ -255,9 +246,7 @@
 
             logEl.innerText = `[${APP_VERSION}] Iniciando conexión...`;
             statusEl.innerText = "Buscando báscula...";
-            sequenceTriggered = false;
-            stableCount = 0;
-            prevWeightRaw = 0;
+            earlySequenceSent = false;
             lastPrintedHex = "";
 
             try {
@@ -269,7 +258,7 @@
                 device.addEventListener('gattserverdisconnected', () => {
                     log(`[${APP_VERSION}] Báscula desconectada.`);
                     statusEl.innerText = "Báscula desconectada";
-                    sequenceTriggered = false;
+                    earlySequenceSent = false;
                 });
 
                 statusEl.innerText = "Conectando GATT...";
@@ -281,15 +270,16 @@
 
                 await notifyChar.startNotifications();
 
+                // 1. Handshake FD 37
                 try {
                     await writeCharGlobal.writeValue(PKT_INIT_FD);
-                    log(`[${APP_VERSION}] Saludo oficial FD 37 enviado.`);
+                    log(`[${APP_VERSION}] Saludo FD 37 enviado.`);
                 } catch (e) {
                     log(`[${APP_VERSION}] Error FD 37: ${e.message}`);
                 }
 
                 statusEl.innerText = "Sujeta la barra y súbete descalzo";
-                log(`[${APP_VERSION}] Esperando peso de usuario (> 50 kg)...`);
+                log(`[${APP_VERSION}] Esperando primer apoyo para inyectar B3/B2...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -300,53 +290,34 @@
 
                     log(`[RX]: ${hex}`);
 
-                    // 1. TRAMA CONTINUA 0x21
+                    // 1. TRAMA DINÁMICA 0x21
                     if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
-                        const wKg = (rawWeight / 100).toFixed(2);
-                        pesoVal.innerText = `${wKg} kg`;
+                        finalWeightKg = (rawWeight / 100).toFixed(2);
+                        pesoVal.innerText = `${finalWeightKg} kg`;
 
-                        // Disparar en cuanto esté subido de verdad (> 50 kg) y tenga 2 muestras coherentes
-                        if (rawWeight > 5000 && !sequenceTriggered) {
-                            if (Math.abs(rawWeight - prevWeightRaw) <= 40) {
-                                stableCount++;
-                            } else {
-                                stableCount = 0;
-                            }
-                            prevWeightRaw = rawWeight;
+                        // DISPARO TEMPRANO EXACTO (> 15 kg): Igual que en v7.0
+                        if (rawWeight > 1500 && !earlySequenceSent) {
+                            earlySequenceSent = true;
+                            statusEl.innerText = "Inicializando bioimpedancia segmental...";
+                            log(`[${APP_VERSION}] Apoyo detectado (${finalWeightKg} kg). Inyectando B3 + B2...`);
 
-                            if (stableCount >= 2) {
-                                sequenceTriggered = true;
-                                statusEl.innerText = "Activando medición segmental en la báscula...";
-                                log(`[${APP_VERSION}] Peso (${wKg} kg). Enviando bloque B3 + B2...`);
-
-                                try {
-                                    // B3 inicial
-                                    await writeCharGlobal.writeValue(PKT_B3_INIT);
-                                    log(`[${APP_VERSION}] B3 enviado.`);
-
-                                    // B2 inmediatamente tras 80 ms con el peso medido
-                                    setTimeout(async () => {
-                                        try {
-                                            const pktB2 = buildB2Packet(rawWeight);
-                                            await writeCharGlobal.writeValue(pktB2);
-                                            log(`[${APP_VERSION}] B2 enviado: ${Array.from(pktB2).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
-                                            statusEl.innerText = "Sujeta firme la barra extensible...";
-                                        } catch (e2) {
-                                            log(`[${APP_VERSION}] Error B2: ${e2.message}`);
-                                        }
-                                    }, 80);
-
-                                } catch (errB3) {
-                                    log(`[${APP_VERSION}] Error B3: ${errB3.message}`);
-                                }
+                            try {
+                                await writeCharGlobal.writeValue(PKT_B3_INIT);
+                                await new Promise(r => setTimeout(r, 60));
+                                await writeCharGlobal.writeValue(PKT_B2_INIT);
+                                log(`[${APP_VERSION}] Secuencia oficial B3/B2 armada.`);
+                            } catch (errInit) {
+                                log(`[${APP_VERSION}] Error enviando B3/B2: ${errInit.message}`);
                             }
                         }
                     }
-                    // 2. TRAMAS 0x26: Frames segmentales durante la animación
+                    // 2. TRAMAS 0x26: Frames de escaneo durante la animación
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x26) {
                         const frameId = bytes[5];
-                        log(`[${APP_VERSION}] >>> Frame 0x26 (${frameId}) detectado. Respondiendo B6...`);
+                        log(`[${APP_VERSION}] >>> ¡FRAME 0x26 (${frameId}) DETECTADO! Respondiendo B6...`);
+                        statusEl.innerText = "Midiendo electrodos de manos y pies...";
+
                         try {
                             if (frameId === 0x01) {
                                 await writeCharGlobal.writeValue(PKT_ACK_B6_FRAME1);
@@ -359,19 +330,15 @@
                             log(`[${APP_VERSION}] Error ACK B6: ${eAck.message}`);
                         }
                     }
-                    // 3. TRAMA FINAL 0x25 O CUALQUIER TRAMA LARGA DE RESULTADOS
+                    // 3. TRAMA FINAL 0x25 (36 bytes) O CUALQUIER TRAMA DE ANÁLISIS
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA && (bytes[2] === 0x25 || bytes.length >= 15)) {
-                        log(`[${APP_VERSION}] >>> ¡TRAMA FINAL DE MEDICIÓN RECIBIDA!: ${hex}`);
+                        log(`[${APP_VERSION}] >>> ¡TRAMA FINAL 0x25 RECIBIDA!: ${hex}`);
                         statusEl.innerText = "✓ Medición completada";
 
-                        const rawW = (bytes[8] << 8) | bytes[9];
-                        if (rawW > 2000) {
-                            const finalW = (rawW / 100).toFixed(2);
-                            pesoVal.innerText = `${finalW} kg`;
-                        }
-
-                        // Localización de resistencias en trama 0x25
                         if (bytes.length >= 16) {
+                            const rawW = (bytes[8] << 8) | bytes[9];
+                            if (rawW > 2000) pesoVal.innerText = `${(rawW / 100).toFixed(2)} kg`;
+
                             const r1 = (bytes[12] << 8) | bytes[13];
                             const r2 = (bytes[14] << 8) | bytes[15];
 
@@ -379,11 +346,19 @@
                             if (r2 > 0) laVal.innerText = `${r2} Ω`;
                             impVal.innerText = `${r1 > 0 ? r1 : r2} Ω`;
 
-                            const comp = calculateBodyComposition(parseFloat(pesoVal.innerText || 73.2), height, age, gender, r1 > 0 ? r1 : 500);
+                            const comp = calculateBodyComposition(parseFloat(pesoVal.innerText || 73.0), height, age, gender, r1 > 0 ? r1 : 500);
                             fatVal.innerText = `${comp.fat} %`;
                             waterVal.innerText = `${comp.water} %`;
                             muscleVal.innerText = `${comp.muscle} kg`;
                         }
+
+                        // Envío de cierre final B2
+                        try {
+                            const rawW = (bytes[8] << 8) | bytes[9];
+                            const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, (rawW >> 8) & 0xFF, rawW & 0xFF, 0xB5, 0x07, 0x02, 0x06]);
+                            await writeCharGlobal.writeValue(pktFinal);
+                            log(`[${APP_VERSION}] Cierre final B2 enviado.`);
+                        } catch (e) {}
                     }
                 });
 
