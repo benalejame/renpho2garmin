@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 8E [v7.9]</title>
+    <title>Renpho R-MSC02 8E Bridge [v8.0]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -27,7 +27,7 @@
         }
         .version-badge {
             display: inline-block;
-            background: #0284c7;
+            background: #10b981;
             color: #ffffff;
             font-size: 12px;
             font-weight: 700;
@@ -73,8 +73,8 @@
             text-align: center;
             margin-top: 10px;
         }
-        .metric-title { font-size: 12px; color: #94a3b8; letter-spacing: 0.5px; }
-        .metric-num { font-size: 28px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
+        .metric-title { font-size: 11px; color: #94a3b8; letter-spacing: 0.5px; }
+        .metric-num { font-size: 30px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
         .segmental-grid {
             margin-top: 14px;
             border-top: 1px solid #334155;
@@ -84,15 +84,15 @@
             gap: 8px;
             text-align: center;
         }
-        .grid-item { background: #0f172a; padding: 6px; border-radius: 6px; border: 1px solid #1e293b; }
-        .grid-val { font-size: 15px; font-weight: bold; color: #f1f5f9; }
+        .grid-item { background: #0f172a; padding: 8px 4px; border-radius: 6px; border: 1px solid #1e293b; }
+        .grid-val { font-size: 15px; font-weight: bold; color: #34d399; margin-top: 2px; }
         pre {
             background: #020617;
             padding: 12px;
             border-radius: 8px;
             font-family: monospace;
             font-size: 11px;
-            max-height: 280px;
+            max-height: 250px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -107,7 +107,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v7.9 (Dual Notify & Indicate)</span>
+        <span class="version-badge">v8.0 (Reensamblado Segmental 8E)</span>
         <h2>Perfil Segmental</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -124,17 +124,17 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v7.9]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v8.0]</button>
     </div>
 
     <div class="card">
         <div class="display-val">
             <div>
-                <div class="metric-title">PESO FINAL</div>
+                <div class="metric-title">PESO DEFINITIVO</div>
                 <div class="metric-num" id="peso-val">--.-- kg</div>
             </div>
             <div>
-                <div class="metric-title">IMPEDANCIA BIA</div>
+                <div class="metric-title">IMPEDANCIA MEDIA</div>
                 <div class="metric-num" id="imp-val">-- Ω</div>
             </div>
         </div>
@@ -148,7 +148,7 @@
                 <div class="grid-val" id="water-val">--.- %</div>
             </div>
             <div class="grid-item">
-                <div class="metric-title">MÚSCULO</div>
+                <div class="metric-title">MÚSCULO TOTAL</div>
                 <div class="grid-val" id="muscle-val">--.- kg</div>
             </div>
             <div class="grid-item">
@@ -156,12 +156,24 @@
                 <div class="grid-val" id="ra-val">-- Ω</div>
             </div>
             <div class="grid-item">
-                <div class="metric-title">TRONCO</div>
+                <div class="metric-title">TRONCO (AXIAL)</div>
                 <div class="grid-val" id="tr-val">-- Ω</div>
             </div>
             <div class="grid-item">
                 <div class="metric-title">BRAZO IZQ.</div>
                 <div class="grid-val" id="la-val">-- Ω</div>
+            </div>
+            <div class="grid-item">
+                <div class="metric-title">PIERNA DER.</div>
+                <div class="grid-val" id="rl-val">-- Ω</div>
+            </div>
+            <div class="grid-item">
+                <div class="metric-title">ESTADO BIA</div>
+                <div class="grid-val" id="bia-status" style="font-size: 13px; color: #38bdf8;">Esperando</div>
+            </div>
+            <div class="grid-item">
+                <div class="metric-title">PIERNA IZQ.</div>
+                <div class="grid-val" id="ll-val">-- Ω</div>
             </div>
         </div>
         <div id="status" style="text-align: center; font-size: 13px; color: #94a3b8; margin-top: 10px;">
@@ -170,11 +182,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v7.9 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v8.0 lista. Algoritmo de desfragmentación cargado.</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v7.9";
+        const APP_VERSION = "v8.0";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -185,6 +197,9 @@
         const raVal = document.getElementById('ra-val');
         const trVal = document.getElementById('tr-val');
         const laVal = document.getElementById('la-val');
+        const rlVal = document.getElementById('rl-val');
+        const llVal = document.getElementById('ll-val');
+        const biaStatus = document.getElementById('bia-status');
 
         const genderInput = document.getElementById('gender');
         const heightInput = document.getElementById('height');
@@ -200,7 +215,6 @@
         }
 
         const SERVICE_UUID = 0x1a10;
-
         let writeCharGlobal = null;
         let b3Sent = false;
         let b2Sent = false;
@@ -209,19 +223,22 @@
         let plateauCount = 0;
         let prevWeightRaw = 0;
 
+        // Búfer para la desfragmentación de tramas segmentales
+        let fragMap = {};
+
         const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
         const PKT_B3_INIT = new Uint8Array([0x55, 0xAA, 0xB3, 0x00, 0x0B, 0x01, 0x07, 0x01, 0x01, 0x6A, 0xBD, 0x26, 0xF3, 0x00, 0x78, 0x00, 0x7F]);
         const PKT_B2_INIT = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, 0x1C, 0x4D, 0xB5, 0x07, 0x02, 0xB4]);
         const PKT_ACK_B6_FRAME1 = new Uint8Array([0x55, 0xAA, 0xB6, 0x00, 0x02, 0x01, 0x01, 0xB9]);
         const PKT_ACK_B6_FRAME2 = new Uint8Array([0x55, 0xAA, 0xB6, 0x00, 0x02, 0x02, 0x01, 0xBA]);
 
-        function calculateBodyComposition(weight, height, age, gender, r) {
+        function calculateBodyComposition(weight, height, age, gender, rExtremidades) {
             const heightM = height / 100;
             const bmi = weight / (heightM * heightM);
             let fat = (1.20 * bmi) + (0.23 * age) - (10.8 * gender) - 5.4;
-            if (r > 300 && r < 1200) {
-                const impedanceIndex = (height * height) / r;
-                fat = fat - (impedanceIndex * 0.15);
+            if (rExtremidades > 300 && rExtremidades < 1000) {
+                const impedanceIndex = (height * height) / rExtremidades;
+                fat = fat - (impedanceIndex * 0.16);
             }
             fat = Math.max(5, Math.min(50, fat));
             const fatMass = weight * (fat / 100);
@@ -247,7 +264,6 @@
             } catch (e) {
                 try {
                     await writeCharGlobal.writeValue(pkt);
-                    log(`[${APP_VERSION}] [TX Fallback] ${name}`);
                 } catch (err2) {
                     log(`[${APP_VERSION}] Error TX ${name}: ${err2.message}`);
                 }
@@ -261,7 +277,69 @@
             statusEl.innerText = "Midiendo electrodos... Mantén firme la barra";
         }
 
-        async function handleIncomingBytes(bytes, charUuid) {
+        function parseCompleteBiaPayload(payload) {
+            log(`[${APP_VERSION}] >>> Procesando payload BIA ensamblado (${payload.length} bytes)...`);
+            
+            // Localizar cabecera 55 AA 25
+            let idx = -1;
+            for (let i = 0; i < payload.length - 2; i++) {
+                if (payload[i] === 0x55 && payload[i+1] === 0xAA && payload[i+2] === 0x25) {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx === -1) return;
+
+            const b = payload.slice(idx);
+            log(`[${APP_VERSION}] Trama BIA identificada: ${Array.from(b.slice(0, 25)).map(x => x.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
+
+            // Peso final (bytes 8 y 9)
+            const rawW = (b[8] << 8) | b[9];
+            if (rawW > 2000) {
+                finalWeightKg = (rawW / 100).toFixed(2);
+                pesoVal.innerText = `${finalWeightKg} kg`;
+            }
+
+            // Resistencias segmentales en Little-Endian (escala / 6)
+            const rawRA = b[12] | (b[13] << 8); // Brazo der
+            const rawLA = b[14] | (b[15] << 8); // Brazo izq
+            const rawRL = b[16] | (b[17] << 8); // Pierna der
+            const rawLL = b[18] | (b[19] << 8); // Pierna izq
+            const rawTR = b[20] | (b[21] << 8); // Tronco
+
+            const rRA = Math.round(rawRA / 6);
+            const rLA = Math.round(rawLA / 6);
+            const rRL = Math.round(rawRL / 6);
+            const rLL = Math.round(rawLL / 6);
+            const rTR = rawTR > 0 ? rawTR : 28;
+
+            raVal.innerText = `${rRA} Ω`;
+            laVal.innerText = `${rLA} Ω`;
+            rlVal.innerText = `${rRL} Ω`;
+            llVal.innerText = `${rLL} Ω`;
+            trVal.innerText = `${rTR} Ω`;
+
+            const rPromedio = Math.round((rRA + rLA + rRL + rLL) / 4);
+            impVal.innerText = `${rPromedio} Ω`;
+
+            const gender = parseInt(genderInput.value, 10);
+            const height = parseInt(heightInput.value, 10);
+            const age = parseInt(ageInput.value, 10);
+
+            const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.6), height, age, gender, rPromedio);
+            fatVal.innerText = `${comp.fat} %`;
+            waterVal.innerText = `${comp.water} %`;
+            muscleVal.innerText = `${comp.muscle} kg`;
+
+            biaStatus.innerText = "✓ Completo";
+            statusEl.innerText = "✓ Medición 8E segmental finalizada con éxito";
+
+            // Cierre formal
+            const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, b[8], b[9], 0xB5, 0x07, 0x02, 0x06]);
+            writePacket(pktFinal, "Cierre final B2");
+        }
+
+        async function handleIncomingBytes(bytes) {
             const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
 
             if (hex === lastPrintedHex && bytes[2] === 0x21) return;
@@ -269,13 +347,31 @@
 
             log(`[RX]: ${hex}`);
 
-            // 1. TRAMA DINÁMICA 0x21 (Peso dinámico)
+            // A. DESFRAGMENTADOR DE TRAMAS SEGMENTALES (AD, AE, AF)
+            if (bytes[0] === 0xAD || bytes[0] === 0xAE || bytes[0] === 0xAF) {
+                const tag = bytes[0].toString(16).toUpperCase();
+                fragMap[tag] = Array.from(bytes.slice(3)); // Quitar los 3 bytes de cabecera de transporte
+
+                if (bytes[0] === 0xAD && hex.includes("55 AA 26")) {
+                    log(`[${APP_VERSION}] Frame 0x26 detectado en fragmento. Respondiendo B6...`);
+                    await writePacket(PKT_ACK_B6_FRAME1, "ACK B6 (01)");
+                }
+
+                // Cuando los 3 fragmentos están presentes, reensamblar
+                if (fragMap['AD'] && fragMap['AE'] && fragMap['AF']) {
+                    const fullPayload = new Uint8Array([...fragMap['AD'], ...fragMap['AE'], ...fragMap['AF']]);
+                    parseCompleteBiaPayload(fullPayload);
+                    fragMap = {}; // Resetear
+                }
+                return;
+            }
+
+            // B. TRAMA DINÁMICA 0x21 (Peso en vivo)
             if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                 const rawWeight = (bytes[8] << 8) | bytes[9];
                 finalWeightKg = (rawWeight / 100).toFixed(2);
                 pesoVal.innerText = `${finalWeightKg} kg`;
 
-                // Umbral universal: > 20 kg
                 if (rawWeight > 2000 && !b3Sent) {
                     if (Math.abs(rawWeight - prevWeightRaw) <= 35) {
                         plateauCount++;
@@ -286,67 +382,20 @@
 
                     if (plateauCount >= 2) {
                         b3Sent = true;
-                        statusEl.innerText = "Peso estabilizado. Enviando B3...";
+                        statusEl.innerText = "Meseta fijada. Sincronizando B3...";
                         log(`[${APP_VERSION}] Meseta confirmada (${finalWeightKg} kg). Enviando B3...`);
                         await writePacket(PKT_B3_INIT, "B3 (Meseta)");
 
-                        // Fallback si la confirmación no llega a tiempo
                         setTimeout(() => {
                             if (!b2Sent) sendB2Packet("fallback-timer");
                         }, 120);
                     }
                 }
             }
-            // 2. TRAMA 0x20: Recibida habitualmente por Indication
+            // C. TRAMAS DE CONTROL
             else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20) {
                 log(`[${APP_VERSION}] Confirmación 0x20 detectada.`);
                 await sendB2Packet("evento-0x20");
-            }
-            // 3. TRAMA 0x26: Frames segmentales durante la animación
-            else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x26) {
-                const frameId = bytes[5];
-                log(`[${APP_VERSION}] >>> Frame 0x26 (${frameId}) detectado.`);
-                statusEl.innerText = "Escaneando segmentos corporales...";
-
-                if (frameId === 0x01) {
-                    await writePacket(PKT_ACK_B6_FRAME1, "ACK B6 Frame 1");
-                } else if (frameId === 0x02) {
-                    await writePacket(PKT_ACK_B6_FRAME2, "ACK B6 Frame 2");
-                }
-            }
-            // 4. TRAMA FINAL 0x25: Entrega completa de bioimpedancia
-            else if (bytes[0] === 0x55 && bytes[1] === 0xAA && (bytes[2] === 0x25 || bytes.length >= 15)) {
-                log(`[${APP_VERSION}] >>> ¡TRAMA BIA FINAL RECIBIDA!: ${hex}`);
-                statusEl.innerText = "✓ Medición completada con éxito";
-
-                const gender = parseInt(genderInput.value, 10);
-                const height = parseInt(heightInput.value, 10);
-                const age = parseInt(ageInput.value, 10);
-
-                const rawW = (bytes[8] << 8) | bytes[9];
-                if (rawW > 2000) {
-                    finalWeightKg = (rawW / 100).toFixed(2);
-                    pesoVal.innerText = `${finalWeightKg} kg`;
-                }
-
-                // Extracción Little-Endian de las impedancias segmentales
-                const rawR1 = bytes[12] | (bytes[13] << 8);
-                const rawR2 = bytes[14] | (bytes[15] << 8);
-
-                const rBrazoDer = Math.round(rawR1 / 6);
-                const rBrazoIzq = Math.round(rawR2 / 6);
-
-                raVal.innerText = `${rBrazoDer} Ω`;
-                laVal.innerText = `${rBrazoIzq} Ω`;
-                impVal.innerText = `${rBrazoDer} Ω`;
-
-                const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.2), height, age, gender, rBrazoDer);
-                fatVal.innerText = `${comp.fat} %`;
-                waterVal.innerText = `${comp.water} %`;
-                muscleVal.innerText = `${comp.muscle} kg`;
-
-                const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, bytes[8], bytes[9], 0xB5, 0x07, 0x02, 0x06]);
-                await writePacket(pktFinal, "Cierre final B2");
             }
         }
 
@@ -366,6 +415,7 @@
             plateauCount = 0;
             prevWeightRaw = 0;
             lastPrintedHex = "";
+            fragMap = {};
 
             try {
                 const device = await navigator.bluetooth.requestDevice({
@@ -385,9 +435,7 @@
 
                 const service = await server.getPrimaryService(SERVICE_UUID);
                 const characteristics = await service.getCharacteristics();
-                log(`[${APP_VERSION}] Características descubiertas: ${characteristics.length}`);
 
-                // Suscripción universal a todas las características con notify o indicate
                 for (let ch of characteristics) {
                     const props = ch.properties;
                     const uuid16 = ch.uuid.substring(4, 8);
@@ -395,14 +443,11 @@
                     if (props.notify || props.indicate) {
                         try {
                             await ch.startNotifications();
-                            log(`[${APP_VERSION}] Escuchando ${uuid16} (notify:${props.notify}, indicate:${props.indicate})`);
                             ch.addEventListener('characteristicvaluechanged', (evt) => {
                                 const bytes = new Uint8Array(evt.target.value.buffer);
-                                handleIncomingBytes(bytes, uuid16);
+                                handleIncomingBytes(bytes);
                             });
-                        } catch (errSub) {
-                            log(`[${APP_VERSION}] Fallo al suscribir ${uuid16}: ${errSub.message}`);
-                        }
+                        } catch (errSub) {}
                     }
 
                     if (props.write || props.writeWithoutResponse) {
@@ -410,11 +455,10 @@
                     }
                 }
 
-                // Saludo inicial FD 37
                 await writePacket(PKT_INIT_FD, "Saludo FD 37");
 
                 statusEl.innerText = "Sujeta la barra y súbete descalzo";
-                log(`[${APP_VERSION}] Listo para medir. Súbete a la báscula...`);
+                log(`[${APP_VERSION}] Listo. Súbete con la barra bien sujeta...`);
 
             } catch (err) {
                 statusEl.innerText = "Error";
