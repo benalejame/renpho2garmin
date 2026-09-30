@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 8E [v7.5]</title>
+    <title>Renpho R-MSC02 8E [v7.6]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -107,7 +107,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v7.5 (Flujo Pasivo 8E)</span>
+        <span class="version-badge">v7.6 (Decodificación 8E Final)</span>
         <h2>Perfil Segmental</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -124,7 +124,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v7.5]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v7.6]</button>
     </div>
 
     <div class="card">
@@ -170,11 +170,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v7.5 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v7.6 lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v7.5";
+        const APP_VERSION = "v7.6";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -204,7 +204,7 @@
         const CHAR_WRITE_UUID = 0x2a11;
 
         let writeCharGlobal = null;
-        let setupInjected = false;
+        let b3Sent = false;
         let lastPrintedHex = "";
         let finalWeightKg = 0;
 
@@ -245,7 +245,7 @@
 
             logEl.innerText = `[${APP_VERSION}] Iniciando conexión...`;
             statusEl.innerText = "Buscando báscula...";
-            setupInjected = false;
+            b3Sent = false;
             lastPrintedHex = "";
 
             try {
@@ -257,7 +257,7 @@
                 device.addEventListener('gattserverdisconnected', () => {
                     log(`[${APP_VERSION}] Báscula desconectada.`);
                     statusEl.innerText = "Báscula desconectada";
-                    setupInjected = false;
+                    b3Sent = false;
                 });
 
                 statusEl.innerText = "Conectando GATT...";
@@ -269,7 +269,7 @@
 
                 await notifyChar.startNotifications();
 
-                // 1. Saludo FD 37
+                // 1. Saludo inicial FD 37
                 try {
                     await writeCharGlobal.writeValue(PKT_INIT_FD);
                     log(`[${APP_VERSION}] Saludo FD 37 enviado.`);
@@ -278,7 +278,7 @@
                 }
 
                 statusEl.innerText = "Sujeta la barra y súbete descalzo";
-                log(`[${APP_VERSION}] Esperando pesaje. Mantén la posición sin bajarte...`);
+                log(`[${APP_VERSION}] Esperando apoyo para iniciar negociación...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -289,33 +289,41 @@
 
                     log(`[RX]: ${hex}`);
 
-                    // 1. TRAMA 0x21: Peso dinámico
+                    // 1. TRAMA DINÁMICA 0x21
                     if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
                         finalWeightKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${finalWeightKg} kg`;
 
-                        // Inyección limpia al primer contacto
-                        if (rawWeight > 1500 && !setupInjected) {
-                            setupInjected = true;
-                            statusEl.innerText = "Inicializando bioimpedancia... No te muevas";
-                            log(`[${APP_VERSION}] Apoyo detectado (${finalWeightKg} kg). Inyectando B3 + B2...`);
-
+                        // Al primer apoyo (> 15 kg), enviamos B3 y esperamos pacientemente 0x20
+                        if (rawWeight > 1500 && !b3Sent) {
+                            b3Sent = true;
+                            statusEl.innerText = "Iniciando protocolo segmental... No te muevas";
+                            log(`[${APP_VERSION}] Contacto (${finalWeightKg} kg). Enviando B3...`);
                             try {
                                 await writeCharGlobal.writeValue(PKT_B3_INIT);
-                                await new Promise(r => setTimeout(r, 60));
-                                await writeCharGlobal.writeValue(PKT_B2_INIT);
-                                log(`[${APP_VERSION}] B3/B2 inyectados. Canal abierto.`);
-                            } catch (errInit) {
-                                log(`[${APP_VERSION}] Error B3/B2: ${errInit.message}`);
+                                log(`[${APP_VERSION}] B3 enviado. Esperando confirmación 0x20...`);
+                            } catch (errB3) {
+                                log(`[${APP_VERSION}] Error B3: ${errB3.message}`);
                             }
                         }
                     }
-                    // 2. TRAMA 0x26: Frames de escaneo segmental durante la animación
+                    // 2. TRAMA 0x20: La báscula da luz verde para enviar B2
+                    else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20) {
+                        log(`[${APP_VERSION}] Confirmación 0x20 recibida. Respondiendo B2...`);
+                        try {
+                            await writeCharGlobal.writeValue(PKT_B2_INIT);
+                            log(`[${APP_VERSION}] B2 inyectado con éxito. Sesión armada.`);
+                            statusEl.innerText = "Midiendo electrodos... Mantén firme la barra";
+                        } catch (errB2) {
+                            log(`[${APP_VERSION}] Error B2: ${errB2.message}`);
+                        }
+                    }
+                    // 3. TRAMA 0x26: Frames segmentales durante la animación
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x26) {
                         const frameId = bytes[5];
-                        log(`[${APP_VERSION}] >>> ¡FRAME 0x26 (${frameId}) DETECTADO! Respondiendo ACK B6...`);
-                        statusEl.innerText = "Escaneando segmentos corporales...";
+                        log(`[${APP_VERSION}] >>> Frame 0x26 (${frameId}) detectado. Enviando ACK B6...`);
+                        statusEl.innerText = "Escaneando brazos y piernas...";
 
                         try {
                             if (frameId === 0x01) {
@@ -326,37 +334,43 @@
                                 log(`[${APP_VERSION}] ACK B6 Frame 2 enviado.`);
                             }
                         } catch (eAck) {
-                            log(`[${APP_VERSION}] Error enviando ACK: ${eAck.message}`);
+                            log(`[${APP_VERSION}] Error ACK: ${eAck.message}`);
                         }
                     }
-                    // 3. TRAMA FINAL 0x25 O PAQUETE LARGO DE RESULTADOS
-                    else if (bytes[0] === 0x55 && bytes[1] === 0xAA && (bytes[2] === 0x25 || bytes.length >= 15)) {
-                        log(`[${APP_VERSION}] >>> ¡TRAMA BIA FINAL RECIBIDA CON ÉXITO!: ${hex}`);
-                        statusEl.innerText = "✓ Medición completada";
+                    // 4. TRAMA FINAL 0x25: Entrega completa de bioimpedancia
+                    else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x25) {
+                        log(`[${APP_VERSION}] >>> ¡TRAMA BIA FINAL RECIBIDA!: ${hex}`);
+                        statusEl.innerText = "✓ Medición completada con éxito";
 
-                        if (bytes.length >= 16) {
-                            const rawW = (bytes[8] << 8) | bytes[9];
-                            if (rawW > 2000) pesoVal.innerText = `${(rawW / 100).toFixed(2)} kg`;
-
-                            const r1 = (bytes[12] << 8) | bytes[13];
-                            const r2 = (bytes[14] << 8) | bytes[15];
-
-                            if (r1 > 0) raVal.innerText = `${r1} Ω`;
-                            if (r2 > 0) laVal.innerText = `${r2} Ω`;
-                            impVal.innerText = `${r1 > 0 ? r1 : r2} Ω`;
-
-                            const comp = calculateBodyComposition(parseFloat(pesoVal.innerText || 73.0), height, age, gender, r1 > 0 ? r1 : 500);
-                            fatVal.innerText = `${comp.fat} %`;
-                            waterVal.innerText = `${comp.water} %`;
-                            muscleVal.innerText = `${comp.muscle} kg`;
+                        // Decodificación exacta Little-Endian revelada por el log
+                        const rawW = (bytes[8] << 8) | bytes[9];
+                        if (rawW > 2000) {
+                            finalWeightKg = (rawW / 100).toFixed(2);
+                            pesoVal.innerText = `${finalWeightKg} kg`;
                         }
 
-                        // Cierre de sesión formal hacia la báscula
+                        // Bytes 12..15: Resistencia en Little-Endian (ej: E3 0B -> 0x0BE3 = 3043 -> 507 Ω)
+                        const rawR1 = bytes[12] | (bytes[13] << 8);
+                        const rawR2 = bytes[14] | (bytes[15] << 8);
+
+                        // En el coprocesador Chipsea 8E, el factor de escala habitual es / 6
+                        const rBrazoDer = Math.round(rawR1 / 6);
+                        const rBrazoIzq = Math.round(rawR2 / 6);
+
+                        raVal.innerText = `${rBrazoDer} Ω`;
+                        laVal.innerText = `${rBrazoIzq} Ω`;
+                        impVal.innerText = `${rBrazoDer} Ω`;
+
+                        const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.2), height, age, gender, rBrazoDer);
+                        fatVal.innerText = `${comp.fat} %`;
+                        waterVal.innerText = `${comp.water} %`;
+                        muscleVal.innerText = `${comp.muscle} kg`;
+
+                        // Cierre de sesión formal B2
                         try {
-                            const rawW = (bytes[8] << 8) | bytes[9];
-                            const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, (rawW >> 8) & 0xFF, rawW & 0xFF, 0xB5, 0x07, 0x02, 0x06]);
+                            const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, bytes[8], bytes[9], 0xB5, 0x07, 0x02, 0x06]);
                             await writeCharGlobal.writeValue(pktFinal);
-                            log(`[${APP_VERSION}] Cierre de sesión B2 transmitido.`);
+                            log(`[${APP_VERSION}] Cierre final transmitido.`);
                         } catch (e) {}
                     }
                 });
