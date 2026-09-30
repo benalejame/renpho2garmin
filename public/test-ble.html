@@ -147,20 +147,31 @@
         const CHAR_NOTIFY_UUID = 0x2a10;
         const CHAR_WRITE_UUID = 0x2a11;
 
-        // Comandos de sincronización extraídos del protocolo Chipsea
-        function getHandshakePacket() {
-            return new Uint8Array([0x02, 0x00, 0x00, 0x02]);
+        // Construye el paquete de usuario con el formato estándar Chipsea CS125x / Yolanda
+        function buildUserProfile(gender, age, height) {
+            const p = [0x55, 0xAA, 0x22, 0x00, 0x06, 0x01, gender, age, height, 0x00];
+            let sum = 0;
+            for (let i = 0; i < p.length; i++) sum += p[i];
+            p.push(sum & 0xFF);
+            return new Uint8Array(p);
         }
 
-        function buildUserPacket(gender, age, height) {
-            // Cabecera de configuración de usuario: 0x55 0xAA 0x11
-            const payload = [0x55, 0xAA, 0x11, 0x00, 0x04, gender, age, height, 0x01];
-            let cs = 0;
-            for (let i = 0; i < payload.length; i++) {
-                cs ^= payload[i];
-            }
-            payload.push(cs & 0xFF);
-            return new Uint8Array(payload);
+        // Paquete de sincronización horaria 0x20
+        function buildSyncClock() {
+            const now = new Date();
+            const p = [
+                0x55, 0xAA, 0x20, 0x00, 0x06,
+                now.getFullYear() - 2000,
+                now.getMonth() + 1,
+                now.getDate(),
+                now.getHours(),
+                now.getMinutes(),
+                now.getSeconds()
+            ];
+            let sum = 0;
+            for (let i = 0; i < p.length; i++) sum += p[i];
+            p.push(sum & 0xFF);
+            return new Uint8Array(p);
         }
 
         document.getElementById('btn-conectar').addEventListener('click', async () => {
@@ -190,26 +201,25 @@
 
                 await notifyChar.startNotifications();
 
-                // 1. Envío de Handshake
+                // Secuencia de activación secuencial
                 try {
-                    await writeChar.writeValue(getHandshakePacket());
-                    log("Handshake 0x02 enviado.");
-                } catch (e) {
-                    try {
-                        await writeChar.writeValueWithoutResponse(getHandshakePacket());
-                    } catch (e2) {}
-                }
+                    // 1. Handshake inicial
+                    await writeChar.writeValue(new Uint8Array([0x02, 0x00, 0x00, 0x02]));
+                    log("1/3 Handshake enviado.");
+                    await new Promise(r => setTimeout(r, 100));
 
-                // 2. Envío del perfil de usuario
-                setTimeout(async () => {
-                    try {
-                        const userPacket = buildUserPacket(gender, age, height);
-                        await writeChar.writeValue(userPacket);
-                        log(`Perfil enviado: Sexo=${gender === 1 ? 'H' : 'M'}, Altura=${height}cm, Edad=${age}`);
-                    } catch (e) {
-                        log(`Aviso perfil: ${e.message}`);
-                    }
-                }, 150);
+                    // 2. Sincronización de reloj (0x20)
+                    await writeChar.writeValue(buildSyncClock());
+                    log("2/3 Sincronización de reloj enviada.");
+                    await new Promise(r => setTimeout(r, 100));
+
+                    // 3. Envío de perfil de usuario (0x22)
+                    const userPkt = buildUserProfile(gender, age, height);
+                    await writeChar.writeValue(userPkt);
+                    log(`3/3 Perfil enviado: ${Array.from(userPkt).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ')}`);
+                } catch (e) {
+                    log(`Aviso escritura: ${e.message}`);
+                }
 
                 statusEl.innerText = "¡Súbete descalzo y no bajes hasta completar!";
                 log("Escuchando flujo de tramas...");
@@ -225,7 +235,7 @@
                         const wKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${wKg} kg`;
 
-                        // Detección de impedancia en bytes 6-7 o tramas de cierre
+                        // Extraer valor de impedancia en ohmios
                         const imp = (bytes[6] << 8) | bytes[7];
                         if (imp > 0) {
                             impVal.innerText = `${imp} Ω`;
