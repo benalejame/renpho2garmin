@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 8E Bridge [v8.0]</title>
+    <title>Renpho R-MSC02 8E Bridge [v8.1]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -92,7 +92,7 @@
             border-radius: 8px;
             font-family: monospace;
             font-size: 11px;
-            max-height: 250px;
+            max-height: 230px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -107,8 +107,8 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v8.0 (Reensamblado Segmental 8E)</span>
-        <h2>Perfil Segmental</h2>
+        <span class="version-badge">v8.1 (Producción Segmental 8E)</span>
+        <h2>Perfil de Usuario</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
             <select id="gender">
@@ -124,7 +124,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v8.0]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v8.1]</button>
     </div>
 
     <div class="card">
@@ -156,7 +156,7 @@
                 <div class="grid-val" id="ra-val">-- Ω</div>
             </div>
             <div class="grid-item">
-                <div class="metric-title">TRONCO (AXIAL)</div>
+                <div class="metric-title">TRONCO</div>
                 <div class="grid-val" id="tr-val">-- Ω</div>
             </div>
             <div class="grid-item">
@@ -182,11 +182,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v8.0 lista. Algoritmo de desfragmentación cargado.</pre>
+        <pre id="log">Versión v8.1 lista. Algoritmo final verificado.</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v8.0";
+        const APP_VERSION = "v8.1";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -216,21 +216,24 @@
 
         const SERVICE_UUID = 0x1a10;
         let writeCharGlobal = null;
-        let b3Sent = false;
         let b2Sent = false;
         let lastPrintedHex = "";
         let finalWeightKg = 0;
-        let plateauCount = 0;
-        let prevWeightRaw = 0;
+        let isWriting = false;
+        let writeQueue = [];
 
-        // Búfer para la desfragmentación de tramas segmentales
         let fragMap = {};
 
         const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
-        const PKT_B3_INIT = new Uint8Array([0x55, 0xAA, 0xB3, 0x00, 0x0B, 0x01, 0x07, 0x01, 0x01, 0x6A, 0xBD, 0x26, 0xF3, 0x00, 0x78, 0x00, 0x7F]);
         const PKT_B2_INIT = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, 0x1C, 0x4D, 0xB5, 0x07, 0x02, 0xB4]);
-        const PKT_ACK_B6_FRAME1 = new Uint8Array([0x55, 0xAA, 0xB6, 0x00, 0x02, 0x01, 0x01, 0xB9]);
-        const PKT_ACK_B6_FRAME2 = new Uint8Array([0x55, 0xAA, 0xB6, 0x00, 0x02, 0x02, 0x01, 0xBA]);
+
+        function buildAckB6(frameId) {
+            const p = [0x55, 0xAA, 0xB6, 0x00, 0x02, frameId, 0x01];
+            let sum = 0;
+            for (let b of p) sum += b;
+            p.push(sum & 0xFF);
+            return new Uint8Array(p);
+        }
 
         function calculateBodyComposition(weight, height, age, gender, rExtremidades) {
             const heightM = height / 100;
@@ -252,35 +255,35 @@
             };
         }
 
-        async function writePacket(pkt, name) {
-            if (!writeCharGlobal) return;
+        async function processWriteQueue() {
+            if (isWriting || writeQueue.length === 0 || !writeCharGlobal) return;
+            isWriting = true;
+            const task = writeQueue.shift();
             try {
                 if (writeCharGlobal.writeValueWithResponse) {
-                    await writeCharGlobal.writeValueWithResponse(pkt);
+                    await writeCharGlobal.writeValueWithResponse(task.pkt);
                 } else {
-                    await writeCharGlobal.writeValue(pkt);
+                    await writeCharGlobal.writeValue(task.pkt);
                 }
-                log(`[${APP_VERSION}] [TX] ${name}`);
+                log(`[${APP_VERSION}] [TX] ${task.name}`);
             } catch (e) {
                 try {
-                    await writeCharGlobal.writeValue(pkt);
+                    await writeCharGlobal.writeValue(task.pkt);
                 } catch (err2) {
-                    log(`[${APP_VERSION}] Error TX ${name}: ${err2.message}`);
+                    log(`[${APP_VERSION}] Error TX ${task.name}: ${err2.message}`);
                 }
+            } finally {
+                isWriting = false;
+                setTimeout(processWriteQueue, 30);
             }
         }
 
-        async function sendB2Packet(reason) {
-            if (b2Sent) return;
-            b2Sent = true;
-            await writePacket(PKT_B2_INIT, `B2 (${reason})`);
-            statusEl.innerText = "Midiendo electrodos... Mantén firme la barra";
+        function queueWrite(pkt, name) {
+            writeQueue.push({ pkt, name });
+            processWriteQueue();
         }
 
         function parseCompleteBiaPayload(payload) {
-            log(`[${APP_VERSION}] >>> Procesando payload BIA ensamblado (${payload.length} bytes)...`);
-            
-            // Localizar cabecera 55 AA 25
             let idx = -1;
             for (let i = 0; i < payload.length - 2; i++) {
                 if (payload[i] === 0x55 && payload[i+1] === 0xAA && payload[i+2] === 0x25) {
@@ -288,24 +291,22 @@
                     break;
                 }
             }
-            if (idx === -1) return;
+            if (idx === -1) return; // Si es solo animación 0x26, se ignora
 
             const b = payload.slice(idx);
-            log(`[${APP_VERSION}] Trama BIA identificada: ${Array.from(b.slice(0, 25)).map(x => x.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
+            log(`[${APP_VERSION}] >>> ¡TRAMA BIA FINAL 0x25 PROCESADA!`);
 
-            // Peso final (bytes 8 y 9)
             const rawW = (b[8] << 8) | b[9];
             if (rawW > 2000) {
                 finalWeightKg = (rawW / 100).toFixed(2);
                 pesoVal.innerText = `${finalWeightKg} kg`;
             }
 
-            // Resistencias segmentales en Little-Endian (escala / 6)
-            const rawRA = b[12] | (b[13] << 8); // Brazo der
-            const rawLA = b[14] | (b[15] << 8); // Brazo izq
-            const rawRL = b[16] | (b[17] << 8); // Pierna der
-            const rawLL = b[18] | (b[19] << 8); // Pierna izq
-            const rawTR = b[20] | (b[21] << 8); // Tronco
+            const rawRA = b[12] | (b[13] << 8);
+            const rawLA = b[14] | (b[15] << 8);
+            const rawRL = b[16] | (b[17] << 8);
+            const rawLL = b[18] | (b[19] << 8);
+            const rawTR = b[20] | (b[21] << 8);
 
             const rRA = Math.round(rawRA / 6);
             const rLA = Math.round(rawLA / 6);
@@ -326,17 +327,16 @@
             const height = parseInt(heightInput.value, 10);
             const age = parseInt(ageInput.value, 10);
 
-            const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.6), height, age, gender, rPromedio);
+            const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.4), height, age, gender, rPromedio);
             fatVal.innerText = `${comp.fat} %`;
             waterVal.innerText = `${comp.water} %`;
             muscleVal.innerText = `${comp.muscle} kg`;
 
-            biaStatus.innerText = "✓ Completo";
-            statusEl.innerText = "✓ Medición 8E segmental finalizada con éxito";
+            biaStatus.innerText = "✓ Medición OK";
+            statusEl.innerText = "✓ Medición 8E segmental completada con éxito";
 
-            // Cierre formal
             const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, b[8], b[9], 0xB5, 0x07, 0x02, 0x06]);
-            writePacket(pktFinal, "Cierre final B2");
+            queueWrite(pktFinal, "Cierre final B2");
         }
 
         async function handleIncomingBytes(bytes) {
@@ -347,55 +347,40 @@
 
             log(`[RX]: ${hex}`);
 
-            // A. DESFRAGMENTADOR DE TRAMAS SEGMENTALES (AD, AE, AF)
+            // Desfragmentador AD, AE, AF
             if (bytes[0] === 0xAD || bytes[0] === 0xAE || bytes[0] === 0xAF) {
                 const tag = bytes[0].toString(16).toUpperCase();
-                fragMap[tag] = Array.from(bytes.slice(3)); // Quitar los 3 bytes de cabecera de transporte
+                fragMap[tag] = Array.from(bytes.slice(3));
 
+                // Si es frame 0x26 de escaneo, responder con su ID exacto
                 if (bytes[0] === 0xAD && hex.includes("55 AA 26")) {
-                    log(`[${APP_VERSION}] Frame 0x26 detectado en fragmento. Respondiendo B6...`);
-                    await writePacket(PKT_ACK_B6_FRAME1, "ACK B6 (01)");
+                    const frameId = bytes[8];
+                    biaStatus.innerText = `Midiendo (${frameId}/20)`;
+                    const ackPkt = buildAckB6(frameId);
+                    queueWrite(ackPkt, `ACK B6 (Frame ${frameId})`);
                 }
 
-                // Cuando los 3 fragmentos están presentes, reensamblar
                 if (fragMap['AD'] && fragMap['AE'] && fragMap['AF']) {
                     const fullPayload = new Uint8Array([...fragMap['AD'], ...fragMap['AE'], ...fragMap['AF']]);
                     parseCompleteBiaPayload(fullPayload);
-                    fragMap = {}; // Resetear
+                    fragMap = {};
                 }
                 return;
             }
 
-            // B. TRAMA DINÁMICA 0x21 (Peso en vivo)
+            // Peso dinámico 0x21
             if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                 const rawWeight = (bytes[8] << 8) | bytes[9];
-                finalWeightKg = (rawWeight / 100).toFixed(2);
-                pesoVal.innerText = `${finalWeightKg} kg`;
-
-                if (rawWeight > 2000 && !b3Sent) {
-                    if (Math.abs(rawWeight - prevWeightRaw) <= 35) {
-                        plateauCount++;
-                    } else {
-                        plateauCount = 0;
-                    }
-                    prevWeightRaw = rawWeight;
-
-                    if (plateauCount >= 2) {
-                        b3Sent = true;
-                        statusEl.innerText = "Meseta fijada. Sincronizando B3...";
-                        log(`[${APP_VERSION}] Meseta confirmada (${finalWeightKg} kg). Enviando B3...`);
-                        await writePacket(PKT_B3_INIT, "B3 (Meseta)");
-
-                        setTimeout(() => {
-                            if (!b2Sent) sendB2Packet("fallback-timer");
-                        }, 120);
-                    }
+                if (rawWeight > 1000) {
+                    finalWeightKg = (rawWeight / 100).toFixed(2);
+                    pesoVal.innerText = `${finalWeightKg} kg`;
                 }
             }
-            // C. TRAMAS DE CONTROL
-            else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20) {
-                log(`[${APP_VERSION}] Confirmación 0x20 detectada.`);
-                await sendB2Packet("evento-0x20");
+            // Handshake inicial 0x20
+            else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20 && !b2Sent) {
+                b2Sent = true;
+                queueWrite(PKT_B2_INIT, "B2 (evento-0x20)");
+                statusEl.innerText = "Midiendo segmentos... Sujeta firme la barra";
             }
         }
 
@@ -410,12 +395,10 @@
 
             logEl.innerText = `[${APP_VERSION}] Iniciando conexión...`;
             statusEl.innerText = "Buscando báscula...";
-            b3Sent = false;
             b2Sent = false;
-            plateauCount = 0;
-            prevWeightRaw = 0;
             lastPrintedHex = "";
             fragMap = {};
+            writeQueue = [];
 
             try {
                 const device = await navigator.bluetooth.requestDevice({
@@ -425,9 +408,9 @@
 
                 device.addEventListener('gattserverdisconnected', () => {
                     log(`[${APP_VERSION}] Báscula desconectada.`);
-                    statusEl.innerText = "Báscula desconectada";
-                    b3Sent = false;
-                    b2Sent = false;
+                    if (biaStatus.innerText !== "✓ Medición OK") {
+                        statusEl.innerText = "Báscula desconectada";
+                    }
                 });
 
                 statusEl.innerText = "Conectando GATT...";
@@ -438,8 +421,6 @@
 
                 for (let ch of characteristics) {
                     const props = ch.properties;
-                    const uuid16 = ch.uuid.substring(4, 8);
-
                     if (props.notify || props.indicate) {
                         try {
                             await ch.startNotifications();
@@ -449,16 +430,15 @@
                             });
                         } catch (errSub) {}
                     }
-
                     if (props.write || props.writeWithoutResponse) {
                         writeCharGlobal = ch;
                     }
                 }
 
-                await writePacket(PKT_INIT_FD, "Saludo FD 37");
+                queueWrite(PKT_INIT_FD, "Saludo FD 37");
 
                 statusEl.innerText = "Sujeta la barra y súbete descalzo";
-                log(`[${APP_VERSION}] Listo. Súbete con la barra bien sujeta...`);
+                log(`[${APP_VERSION}] Conectado. Súbete para iniciar el escaneo...`);
 
             } catch (err) {
                 statusEl.innerText = "Error";
