@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 8E [v6.8]</title>
+    <title>Renpho R-MSC02 8E Bridge [v7.0]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -107,7 +107,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v6.8 (8 Electrodos)</span>
+        <span class="version-badge">v7.0 (Protocolo Oficial 8E)</span>
         <h2>Perfil Segmental</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -124,7 +124,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v6.8]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v7.0]</button>
     </div>
 
     <div class="card">
@@ -170,11 +170,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v6.8 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v7.0 lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v6.8";
+        const APP_VERSION = "v7.0";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -204,37 +204,16 @@
         const CHAR_WRITE_UUID = 0x2a11;
 
         let writeCharGlobal = null;
-        let initialProfileSent = false;
-        let backupProfileSent = false;
+        let b3Sent = false;
         let lastPrintedHex = "";
         let finalWeightKg = 0;
 
-        function buildChecksum(arr) {
-            let sum = 0;
-            for (let b of arr) sum += b;
-            arr.push(sum & 0xFF);
-            return new Uint8Array(arr);
-        }
-
-        // Trama nativa de activación para 8 electrodos Chipsea/Yolanda (0x2C)
-        function build8ElectrodeProfile(gender, age, height) {
-            return buildChecksum([0x55, 0xAA, 0x2C, 0x00, 0x08, 0x01, gender, age, height, 0x00, 0x00, 0x01]);
-        }
-
-        async function sendProfile(reason) {
-            if (!writeCharGlobal) return;
-            const gender = parseInt(genderInput.value, 10);
-            const height = parseInt(heightInput.value, 10);
-            const age = parseInt(ageInput.value, 10);
-
-            try {
-                const pkt = build8ElectrodeProfile(gender, age, height);
-                await writeCharGlobal.writeValue(pkt);
-                log(`[${APP_VERSION}] Perfil 8E inyectado (${reason}): ${Array.from(pkt).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
-            } catch (e) {
-                log(`[${APP_VERSION}] Fallo escritura (${reason}): ${e.message}`);
-            }
-        }
+        // Tramas extraídas del tráfico oficial de la app
+        const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
+        const PKT_B3_INIT = new Uint8Array([0x55, 0xAA, 0xB3, 0x00, 0x0B, 0x01, 0x07, 0x01, 0x01, 0x6A, 0xBD, 0x26, 0xF3, 0x00, 0x78, 0x00, 0x7F]);
+        const PKT_B2_CONFIRM = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, 0x1C, 0x4D, 0xB5, 0x07, 0x02, 0xB4]);
+        const PKT_ACK_B6_FRAME1 = new Uint8Array([0x55, 0xAA, 0xB6, 0x00, 0x02, 0x01, 0x01, 0xB9]);
+        const PKT_ACK_B6_FRAME2 = new Uint8Array([0x55, 0xAA, 0xB6, 0x00, 0x02, 0x02, 0x01, 0xBA]);
 
         function calculateBodyComposition(weight, height, age, gender, r) {
             const heightM = height / 100;
@@ -267,8 +246,7 @@
 
             logEl.innerText = `[${APP_VERSION}] Iniciando conexión...`;
             statusEl.innerText = "Buscando báscula...";
-            initialProfileSent = false;
-            backupProfileSent = false;
+            b3Sent = false;
             lastPrintedHex = "";
 
             try {
@@ -280,8 +258,7 @@
                 device.addEventListener('gattserverdisconnected', () => {
                     log(`[${APP_VERSION}] Báscula desconectada.`);
                     statusEl.innerText = "Báscula desconectada";
-                    initialProfileSent = false;
-                    backupProfileSent = false;
+                    b3Sent = false;
                 });
 
                 statusEl.innerText = "Conectando GATT...";
@@ -293,19 +270,16 @@
 
                 await notifyChar.startNotifications();
 
-                // 1. Handshake nativo
+                // 1. Envío del saludo oficial FD 37
                 try {
-                    await writeCharGlobal.writeValue(new Uint8Array([0xFD, 0x37, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38]));
-                    log(`[${APP_VERSION}] Handshake enviado.`);
-                } catch (e) {}
-
-                // 2. Envío INMEDIATO del perfil de 8 electrodos (sin esperar estabilización)
-                await new Promise(r => setTimeout(r, 120));
-                await sendProfile("inicio-conexión");
-                initialProfileSent = true;
+                    await writeCharGlobal.writeValue(PKT_INIT_FD);
+                    log(`[${APP_VERSION}] Saludo oficial FD 37 enviado.`);
+                } catch (e) {
+                    log(`[${APP_VERSION}] Error FD 37: ${e.message}`);
+                }
 
                 statusEl.innerText = "Sujeta la barra y súbete descalzo";
-                log(`[${APP_VERSION}] Perfil activo. Esperando subida a la báscula...`);
+                log(`[${APP_VERSION}] Esperando pesaje para activar handshake B3/B2...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -316,53 +290,75 @@
 
                     log(`[RX]: ${hex}`);
 
-                    // Paquete continuo 0x21
+                    // TRAMA 0x21: Peso dinámico
                     if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
                         finalWeightKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${finalWeightKg} kg`;
 
-                        // Reenvío preventivo al detectar primer peso humano (> 30 kg)
-                        if (rawWeight > 3000 && !backupProfileSent) {
-                            backupProfileSent = true;
-                            log(`[${APP_VERSION}] Peso detectado (${finalWeightKg} kg). Confirmando perfil 8E...`);
-                            await sendProfile("peso-detectado");
+                        // En cuanto detecte peso de usuario (> 20 kg), inyecta B3 y B2
+                        if (rawWeight > 2000 && !b3Sent) {
+                            b3Sent = true;
+                            statusEl.innerText = "Iniciando medición segmental con la app...";
+                            log(`[${APP_VERSION}] Enviando tramas oficiales B3 y B2...`);
+                            try {
+                                await writeCharGlobal.writeValue(PKT_B3_INIT);
+                                await new Promise(r => setTimeout(r, 60));
+                                await writeCharGlobal.writeValue(PKT_B2_CONFIRM);
+                                log(`[${APP_VERSION}] Handshake B3 y B2 completado.`);
+                            } catch (errW) {
+                                log(`[${APP_VERSION}] Error enviando B3/B2: ${errW.message}`);
+                            }
                         }
                     } 
-                    // TRAMAS DE 8 ELECTRODOS / SEGMENTALES (0x2C, 0x2D, 0x2E, 0x32, etc.)
-                    else if (bytes[0] === 0x55 && bytes[1] === 0xAA) {
-                        log(`[${APP_VERSION}] >>> ¡TRAMA SEGMENTAL DETECTADA!: ${hex}`);
-                        statusEl.innerText = "✓ Medición segmental completada";
+                    // TRAMA 0x26: Frame de escaneo segmental
+                    else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x26) {
+                        const frameId = bytes[5];
+                        log(`[${APP_VERSION}] >>> Trama 0x26 recibida (Frame: ${frameId}). Respondiendo ACK B6...`);
+                        statusEl.innerText = "Midiendo segmentos corporales (animación)...";
 
+                        try {
+                            if (frameId === 0x01) {
+                                await writeCharGlobal.writeValue(PKT_ACK_B6_FRAME1);
+                                log(`[${APP_VERSION}] ACK B6 Frame 1 enviado.`);
+                            } else if (frameId === 0x02) {
+                                await writeCharGlobal.writeValue(PKT_ACK_B6_FRAME2);
+                                log(`[${APP_VERSION}] ACK B6 Frame 2 enviado.`);
+                            }
+                        } catch (errAck) {
+                            log(`[${APP_VERSION}] Error enviando ACK B6: ${errAck.message}`);
+                        }
+                    }
+                    // TRAMA 0x25: Entrega final de bioimpedancia segmental
+                    else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x25) {
+                        log(`[${APP_VERSION}] >>> ¡TRAMA FINAL 0x25 RECIBIDA CON ÉXITO!: ${hex}`);
+                        statusEl.innerText = "✓ Medición segmental 8E completada";
+
+                        // Extracción de impedancias de la trama 0x25
                         if (bytes.length >= 16) {
-                            const imp1 = (bytes[6] << 8) | bytes[7];
-                            const imp2 = (bytes[8] << 8) | bytes[9];
-                            const imp3 = (bytes[10] << 8) | bytes[11];
-                            const impGlobal = (bytes[4] << 8) | bytes[5];
+                            const rawW = (bytes[8] << 8) | bytes[9];
+                            if (rawW > 2000) pesoVal.innerText = `${(rawW / 100).toFixed(2)} kg`;
 
-                            if (impGlobal > 200) impVal.innerText = `${impGlobal} Ω`;
-                            if (imp1 > 100) raVal.innerText = `${imp1} Ω`;
-                            if (imp2 > 10)  trVal.innerText = `${imp2} Ω`;
-                            if (imp3 > 100) laVal.innerText = `${imp3} Ω`;
+                            const r1 = (bytes[12] << 8) | bytes[13]; // Brazo derecho
+                            const r2 = (bytes[14] << 8) | bytes[15]; // Brazo izquierdo / tronco
 
-                            const rRef = impGlobal > 200 ? impGlobal : 500;
-                            const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.0), height, age, gender, rRef);
+                            if (r1 > 0) raVal.innerText = `${r1} Ω`;
+                            if (r2 > 0) laVal.innerText = `${r2} Ω`;
+                            impVal.innerText = `${r1} Ω`;
+
+                            const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.2), height, age, gender, r1 > 0 ? r1 : 500);
                             fatVal.innerText = `${comp.fat} %`;
                             waterVal.innerText = `${comp.water} %`;
                             muscleVal.innerText = `${comp.muscle} kg`;
-                        } else {
-                            for (let i = 4; i < bytes.length - 2; i++) {
-                                const val = (bytes[i] << 8) | bytes[i+1];
-                                if (val >= 350 && val <= 1150) {
-                                    impVal.innerText = `${val} Ω`;
-                                    const comp = calculateBodyComposition(parseFloat(finalWeightKg || 73.0), height, age, gender, val);
-                                    fatVal.innerText = `${comp.fat} %`;
-                                    waterVal.innerText = `${comp.water} %`;
-                                    muscleVal.innerText = `${comp.muscle} kg`;
-                                    break;
-                                }
-                            }
                         }
+
+                        // Envío de cierre final B2
+                        try {
+                            const rawW = (bytes[8] << 8) | bytes[9];
+                            const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, (rawW >> 8) & 0xFF, rawW & 0xFF, 0xB5, 0x07, 0x02, 0x06]);
+                            await writeCharGlobal.writeValue(pktFinal);
+                            log(`[${APP_VERSION}] Cierre final B2 enviado.`);
+                        } catch (e) {}
                     }
                 });
 
