@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 8-Electrodos [v6.7]</title>
+    <title>Renpho R-MSC02 8E [v6.8]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -56,8 +56,8 @@
         }
         button {
             width: 100%;
-            padding: 15px;
-            font-size: 16px;
+            padding: 14px;
+            font-size: 15px;
             font-weight: 700;
             background: #0284c7;
             color: #ffffff;
@@ -107,7 +107,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v6.7 (8 Electrodos)</span>
+        <span class="version-badge">v6.8 (8 Electrodos)</span>
         <h2>Perfil Segmental</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -124,7 +124,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v6.7]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v6.8]</button>
     </div>
 
     <div class="card">
@@ -170,11 +170,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v6.7 (8 Electrodos) lista. Esperando conexión...</pre>
+        <pre id="log">Versión v6.8 lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v6.7";
+        const APP_VERSION = "v6.8";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -204,10 +204,9 @@
         const CHAR_WRITE_UUID = 0x2a11;
 
         let writeCharGlobal = null;
-        let profileSent = false;
+        let initialProfileSent = false;
+        let backupProfileSent = false;
         let lastPrintedHex = "";
-        let stableCount = 0;
-        let lastRawWeight = 0;
         let finalWeightKg = 0;
 
         function buildChecksum(arr) {
@@ -217,10 +216,24 @@
             return new Uint8Array(arr);
         }
 
-        // Trama nativa de activación para modelos segmentales (8 electrodos) Chipsea/Yolanda
-        // 0x55 0xAA 0x2C + longitud(8) + ID_usr(1) + sexo + edad + altura + atleta(0) + unidad_kg(0) + con_barra(1)
+        // Trama nativa de activación para 8 electrodos Chipsea/Yolanda (0x2C)
         function build8ElectrodeProfile(gender, age, height) {
             return buildChecksum([0x55, 0xAA, 0x2C, 0x00, 0x08, 0x01, gender, age, height, 0x00, 0x00, 0x01]);
+        }
+
+        async function sendProfile(reason) {
+            if (!writeCharGlobal) return;
+            const gender = parseInt(genderInput.value, 10);
+            const height = parseInt(heightInput.value, 10);
+            const age = parseInt(ageInput.value, 10);
+
+            try {
+                const pkt = build8ElectrodeProfile(gender, age, height);
+                await writeCharGlobal.writeValue(pkt);
+                log(`[${APP_VERSION}] Perfil 8E inyectado (${reason}): ${Array.from(pkt).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
+            } catch (e) {
+                log(`[${APP_VERSION}] Fallo escritura (${reason}): ${e.message}`);
+            }
         }
 
         function calculateBodyComposition(weight, height, age, gender, r) {
@@ -254,9 +267,8 @@
 
             logEl.innerText = `[${APP_VERSION}] Iniciando conexión...`;
             statusEl.innerText = "Buscando báscula...";
-            profileSent = false;
-            stableCount = 0;
-            lastRawWeight = 0;
+            initialProfileSent = false;
+            backupProfileSent = false;
             lastPrintedHex = "";
 
             try {
@@ -268,7 +280,8 @@
                 device.addEventListener('gattserverdisconnected', () => {
                     log(`[${APP_VERSION}] Báscula desconectada.`);
                     statusEl.innerText = "Báscula desconectada";
-                    profileSent = false;
+                    initialProfileSent = false;
+                    backupProfileSent = false;
                 });
 
                 statusEl.innerText = "Conectando GATT...";
@@ -280,14 +293,19 @@
 
                 await notifyChar.startNotifications();
 
-                // Handshake inicial
+                // 1. Handshake nativo
                 try {
                     await writeCharGlobal.writeValue(new Uint8Array([0xFD, 0x37, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x38]));
                     log(`[${APP_VERSION}] Handshake enviado.`);
                 } catch (e) {}
 
+                // 2. Envío INMEDIATO del perfil de 8 electrodos (sin esperar estabilización)
+                await new Promise(r => setTimeout(r, 120));
+                await sendProfile("inicio-conexión");
+                initialProfileSent = true;
+
                 statusEl.innerText = "Sujeta la barra y súbete descalzo";
-                log(`[${APP_VERSION}] Esperando estabilidad con barra de 8 electrodos...`);
+                log(`[${APP_VERSION}] Perfil activo. Esperando subida a la báscula...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -304,38 +322,19 @@
                         finalWeightKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${finalWeightKg} kg`;
 
-                        // Estabilidad
-                        if (rawWeight > 2000) {
-                            if (Math.abs(rawWeight - lastRawWeight) <= 30) {
-                                stableCount++;
-                            } else {
-                                stableCount = 0;
-                            }
-                            lastRawWeight = rawWeight;
-
-                            if (stableCount >= 3 && !profileSent) {
-                                profileSent = true;
-                                statusEl.innerText = "Peso fijado. Escaneando los 8 electrodos...";
-                                log(`[${APP_VERSION}] Peso fijo (${finalWeightKg} kg). Inyectando perfil 8-electrodos (0x2C)...`);
-
-                                try {
-                                    const pkt = build8ElectrodeProfile(gender, age, height);
-                                    await writeCharGlobal.writeValue(pkt);
-                                    log(`[${APP_VERSION}] Perfil 8E enviado: ${Array.from(pkt).map(b => b.toString(16).padStart(2,'0').toUpperCase()).join(' ')}`);
-                                } catch (errW) {
-                                    log(`[${APP_VERSION}] Error escritura 8E: ${errW.message}`);
-                                }
-                            }
+                        // Reenvío preventivo al detectar primer peso humano (> 30 kg)
+                        if (rawWeight > 3000 && !backupProfileSent) {
+                            backupProfileSent = true;
+                            log(`[${APP_VERSION}] Peso detectado (${finalWeightKg} kg). Confirmando perfil 8E...`);
+                            await sendProfile("peso-detectado");
                         }
                     } 
                     // TRAMAS DE 8 ELECTRODOS / SEGMENTALES (0x2C, 0x2D, 0x2E, 0x32, etc.)
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA) {
                         log(`[${APP_VERSION}] >>> ¡TRAMA SEGMENTAL DETECTADA!: ${hex}`);
-                        statusEl.innerText = "✓ Medición segmental de 8 electrodos completada";
+                        statusEl.innerText = "✓ Medición segmental completada";
 
-                        // Si la trama es larga (>= 16 bytes), contiene los valores de tronco y extremidades
                         if (bytes.length >= 16) {
-                            // Estructura segmental típica: [Brazo Der, Tronco, Brazo Izq, Pierna Der, Pierna Izq]
                             const imp1 = (bytes[6] << 8) | bytes[7];
                             const imp2 = (bytes[8] << 8) | bytes[9];
                             const imp3 = (bytes[10] << 8) | bytes[11];
@@ -352,7 +351,6 @@
                             waterVal.innerText = `${comp.water} %`;
                             muscleVal.innerText = `${comp.muscle} kg`;
                         } else {
-                            // Trama corta de bioimpedancia estándar
                             for (let i = 4; i < bytes.length - 2; i++) {
                                 const val = (bytes[i] << 8) | bytes[i+1];
                                 if (val >= 350 && val <= 1150) {
