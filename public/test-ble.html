@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Renpho R-MSC02 8E [v7.6]</title>
+    <title>Renpho R-MSC02 8E [v7.7]</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -107,7 +107,7 @@
 <body>
 
     <div class="card" style="text-align: center;">
-        <span class="version-badge">v7.6 (Decodificación 8E Final)</span>
+        <span class="version-badge">v7.7 (Sincronización Meseta 8E)</span>
         <h2>Perfil Segmental</h2>
         <div class="form-row">
             <label for="gender">Sexo:</label>
@@ -124,7 +124,7 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar e Iniciar [v7.6]</button>
+        <button id="btn-conectar">Conectar e Iniciar [v7.7]</button>
     </div>
 
     <div class="card">
@@ -170,11 +170,11 @@
     </div>
 
     <div class="card" style="padding: 10px;">
-        <pre id="log">Versión v7.6 lista. Esperando conexión...</pre>
+        <pre id="log">Versión v7.7 lista. Esperando conexión...</pre>
     </div>
 
     <script>
-        const APP_VERSION = "v7.6";
+        const APP_VERSION = "v7.7";
         const logEl = document.getElementById('log');
         const statusEl = document.getElementById('status');
         const pesoVal = document.getElementById('peso-val');
@@ -205,8 +205,11 @@
 
         let writeCharGlobal = null;
         let b3Sent = false;
+        let b2Sent = false;
         let lastPrintedHex = "";
         let finalWeightKg = 0;
+        let plateauCount = 0;
+        let prevWeightRaw = 0;
 
         const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
         const PKT_B3_INIT = new Uint8Array([0x55, 0xAA, 0xB3, 0x00, 0x0B, 0x01, 0x07, 0x01, 0x01, 0x6A, 0xBD, 0x26, 0xF3, 0x00, 0x78, 0x00, 0x7F]);
@@ -234,6 +237,18 @@
             };
         }
 
+        async function sendB2Packet(reason) {
+            if (b2Sent) return;
+            b2Sent = true;
+            try {
+                await writeCharGlobal.writeValue(PKT_B2_INIT);
+                log(`[${APP_VERSION}] B2 inyectado (${reason}). Sesión armada.`);
+                statusEl.innerText = "Midiendo electrodos... Mantén firme la barra";
+            } catch (errB2) {
+                log(`[${APP_VERSION}] Error B2: ${errB2.message}`);
+            }
+        }
+
         document.getElementById('btn-conectar').addEventListener('click', async () => {
             const gender = parseInt(genderInput.value, 10);
             const height = parseInt(heightInput.value, 10);
@@ -246,6 +261,9 @@
             logEl.innerText = `[${APP_VERSION}] Iniciando conexión...`;
             statusEl.innerText = "Buscando báscula...";
             b3Sent = false;
+            b2Sent = false;
+            plateauCount = 0;
+            prevWeightRaw = 0;
             lastPrintedHex = "";
 
             try {
@@ -258,6 +276,7 @@
                     log(`[${APP_VERSION}] Báscula desconectada.`);
                     statusEl.innerText = "Báscula desconectada";
                     b3Sent = false;
+                    b2Sent = false;
                 });
 
                 statusEl.innerText = "Conectando GATT...";
@@ -269,7 +288,6 @@
 
                 await notifyChar.startNotifications();
 
-                // 1. Saludo inicial FD 37
                 try {
                     await writeCharGlobal.writeValue(PKT_INIT_FD);
                     log(`[${APP_VERSION}] Saludo FD 37 enviado.`);
@@ -278,7 +296,7 @@
                 }
 
                 statusEl.innerText = "Sujeta la barra y súbete descalzo";
-                log(`[${APP_VERSION}] Esperando apoyo para iniciar negociación...`);
+                log(`[${APP_VERSION}] Esperando meseta de peso (> 65 kg)...`);
 
                 notifyChar.addEventListener('characteristicvaluechanged', async (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
@@ -295,35 +313,45 @@
                         finalWeightKg = (rawWeight / 100).toFixed(2);
                         pesoVal.innerText = `${finalWeightKg} kg`;
 
-                        // Al primer apoyo (> 15 kg), enviamos B3 y esperamos pacientemente 0x20
-                        if (rawWeight > 1500 && !b3Sent) {
-                            b3Sent = true;
-                            statusEl.innerText = "Iniciando protocolo segmental... No te muevas";
-                            log(`[${APP_VERSION}] Contacto (${finalWeightKg} kg). Enviando B3...`);
-                            try {
-                                await writeCharGlobal.writeValue(PKT_B3_INIT);
-                                log(`[${APP_VERSION}] B3 enviado. Esperando confirmación 0x20...`);
-                            } catch (errB3) {
-                                log(`[${APP_VERSION}] Error B3: ${errB3.message}`);
+                        // Detectar meseta (> 65 kg y variaciones pequeñas entre tramas)
+                        if (rawWeight > 6500 && !b3Sent) {
+                            if (Math.abs(rawWeight - prevWeightRaw) <= 35) {
+                                plateauCount++;
+                            } else {
+                                plateauCount = 0;
+                            }
+                            prevWeightRaw = rawWeight;
+
+                            // Al alcanzar estabilidad en meseta, inyectar B3 igual que en el log oficial
+                            if (plateauCount >= 2) {
+                                b3Sent = true;
+                                statusEl.innerText = "Meseta alcanzada. Enviando B3...";
+                                log(`[${APP_VERSION}] Meseta confirmada (${finalWeightKg} kg). Enviando B3...`);
+                                try {
+                                    await writeCharGlobal.writeValue(PKT_B3_INIT);
+                                    log(`[${APP_VERSION}] B3 enviado. Esperando 0x20 o disparando fallback...`);
+
+                                    // Fallback preventivo si la báscula tarda en devolver 0x20
+                                    setTimeout(() => {
+                                        if (!b2Sent) sendB2Packet("fallback-timer");
+                                    }, 120);
+
+                                } catch (errB3) {
+                                    log(`[${APP_VERSION}] Error B3: ${errB3.message}`);
+                                }
                             }
                         }
                     }
-                    // 2. TRAMA 0x20: La báscula da luz verde para enviar B2
+                    // 2. TRAMA 0x20: Respuesta oficial esperada
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20) {
-                        log(`[${APP_VERSION}] Confirmación 0x20 recibida. Respondiendo B2...`);
-                        try {
-                            await writeCharGlobal.writeValue(PKT_B2_INIT);
-                            log(`[${APP_VERSION}] B2 inyectado con éxito. Sesión armada.`);
-                            statusEl.innerText = "Midiendo electrodos... Mantén firme la barra";
-                        } catch (errB2) {
-                            log(`[${APP_VERSION}] Error B2: ${errB2.message}`);
-                        }
+                        log(`[${APP_VERSION}] Confirmación 0x20 recibida.`);
+                        await sendB2Packet("evento-0x20");
                     }
                     // 3. TRAMA 0x26: Frames segmentales durante la animación
                     else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x26) {
                         const frameId = bytes[5];
                         log(`[${APP_VERSION}] >>> Frame 0x26 (${frameId}) detectado. Enviando ACK B6...`);
-                        statusEl.innerText = "Escaneando brazos y piernas...";
+                        statusEl.innerText = "Escaneando segmentos corporales...";
 
                         try {
                             if (frameId === 0x01) {
@@ -342,18 +370,15 @@
                         log(`[${APP_VERSION}] >>> ¡TRAMA BIA FINAL RECIBIDA!: ${hex}`);
                         statusEl.innerText = "✓ Medición completada con éxito";
 
-                        // Decodificación exacta Little-Endian revelada por el log
                         const rawW = (bytes[8] << 8) | bytes[9];
                         if (rawW > 2000) {
                             finalWeightKg = (rawW / 100).toFixed(2);
                             pesoVal.innerText = `${finalWeightKg} kg`;
                         }
 
-                        // Bytes 12..15: Resistencia en Little-Endian (ej: E3 0B -> 0x0BE3 = 3043 -> 507 Ω)
                         const rawR1 = bytes[12] | (bytes[13] << 8);
                         const rawR2 = bytes[14] | (bytes[15] << 8);
 
-                        // En el coprocesador Chipsea 8E, el factor de escala habitual es / 6
                         const rBrazoDer = Math.round(rawR1 / 6);
                         const rBrazoIzq = Math.round(rawR2 / 6);
 
@@ -366,7 +391,6 @@
                         waterVal.innerText = `${comp.water} %`;
                         muscleVal.innerText = `${comp.muscle} kg`;
 
-                        // Cierre de sesión formal B2
                         try {
                             const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, bytes[8], bytes[9], 0xB5, 0x07, 0x02, 0x06]);
                             await writeCharGlobal.writeValue(pktFinal);
