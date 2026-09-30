@@ -3,91 +3,228 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Captura Renpho R-MSC02</title>
+    <title>Renpho R-MSC02 Bridge</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background: #0f172a;
+            background: #090d16;
             color: #f8fafc;
-            padding: 20px;
+            padding: 16px;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .card {
+            background: #1e293b;
+            border-radius: 12px;
+            padding: 18px;
+            width: 100%;
+            max-width: 420px;
+            box-sizing: border-box;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            margin-bottom: 14px;
+        }
+        h2 { margin: 0 0 12px 0; font-size: 20px; text-align: center; }
+        .form-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        label { font-size: 14px; color: #94a3b8; }
+        input, select {
+            background: #0f172a;
+            border: 1px solid #334155;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 15px;
+            width: 120px;
             text-align: center;
         }
         button {
-            padding: 15px 28px;
+            width: 100%;
+            padding: 15px;
             font-size: 16px;
-            font-weight: 600;
+            font-weight: 700;
             background: #0284c7;
             color: #ffffff;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+            margin-top: 8px;
         }
-        button:active {
-            background: #0369a1;
+        button:active { background: #0369a1; }
+        .display-val {
+            display: flex;
+            justify-content: space-around;
+            text-align: center;
+            margin-top: 10px;
         }
+        .metric-title { font-size: 13px; color: #94a3b8; }
+        .metric-num { font-size: 32px; font-weight: bold; color: #38bdf8; margin: 4px 0; }
         pre {
-            background: #1e293b;
-            padding: 15px;
+            background: #020617;
+            padding: 12px;
             border-radius: 8px;
-            text-align: left;
             font-family: monospace;
-            font-size: 13px;
-            max-height: 480px;
+            font-size: 11px;
+            max-height: 200px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
-            margin-top: 15px;
-            border: 1px solid #334155;
+            border: 1px solid #1e293b;
+            color: #cbd5e1;
+            margin: 0;
+            width: 100%;
+            box-sizing: border-box;
         }
     </style>
 </head>
 <body>
-    <h2>Captura Renpho R-MSC02</h2>
-    <p style="font-size: 14px; color: #94a3b8;">1. Enciende la báscula con el pie.<br>2. Pulsa el botón y selecciónala.<br>3. Súbete descalzo y espera a que fije el peso.</p>
-    
-    <button id="btn-conectar">Conectar a la Báscula</button>
-    <pre id="log">Esperando conexión...</pre>
+
+    <div class="card">
+        <h2>Perfil de Usuario</h2>
+        <div class="form-row">
+            <label for="gender">Sexo:</label>
+            <select id="gender">
+                <option value="1">Hombre</option>
+                <option value="0">Mujer</option>
+            </select>
+        </div>
+        <div class="form-row">
+            <label for="height">Altura (cm):</label>
+            <input type="number" id="height" value="173" min="50" max="250">
+        </div>
+        <div class="form-row">
+            <label for="age">Edad:</label>
+            <input type="number" id="age" value="53" min="5" max="120">
+        </div>
+        <button id="btn-conectar">Conectar a la Báscula</button>
+    </div>
+
+    <div class="card">
+        <div class="display-val">
+            <div>
+                <div class="metric-title">PESO</div>
+                <div class="metric-num" id="peso-val">--.-- kg</div>
+            </div>
+            <div>
+                <div class="metric-title">IMPEDANCIA</div>
+                <div class="metric-num" id="imp-val">-- Ω</div>
+            </div>
+        </div>
+        <div id="status" style="text-align: center; font-size: 13px; color: #94a3b8; margin-top: 8px;">
+            Desconectado
+        </div>
+    </div>
+
+    <div class="card" style="padding: 10px;">
+        <pre id="log">Esperando conexión...</pre>
+    </div>
 
     <script>
         const logEl = document.getElementById('log');
+        const statusEl = document.getElementById('status');
+        const pesoVal = document.getElementById('peso-val');
+        const impVal = document.getElementById('imp-val');
+
+        const genderInput = document.getElementById('gender');
+        const heightInput = document.getElementById('height');
+        const ageInput = document.getElementById('age');
+
+        // Cargar perfil guardado si existe
+        if (localStorage.getItem('r_gender')) genderInput.value = localStorage.getItem('r_gender');
+        if (localStorage.getItem('r_height')) heightInput.value = localStorage.getItem('r_height');
+        if (localStorage.getItem('r_age')) ageInput.value = localStorage.getItem('r_age');
+
         function log(msg) {
             logEl.innerText += "\n" + msg;
             logEl.scrollTop = logEl.scrollHeight;
         }
 
-        // UUIDs exactos extraídos de nRF Connect
         const SERVICE_UUID = 0x1a10;
         const CHAR_NOTIFY_UUID = 0x2a10;
+        const CHAR_WRITE_UUID = 0x2a11;
+
+        // Construir paquete de sincronización de usuario (Protocolo Chipsea/Yolanda)
+        function buildUserPacket(gender, age, height) {
+            // Cabecera: 0x55 0xAA 0x11
+            const payload = [0x55, 0xAA, 0x11, 0x00, 0x04, gender, age, height, 0x01];
+            let checksum = 0;
+            for (let i = 0; i < payload.length; i++) {
+                checksum ^= payload[i]; // XOR o acumulación según variante
+            }
+            payload.push(checksum & 0xFF);
+            return new Uint8Array(payload);
+        }
 
         document.getElementById('btn-conectar').addEventListener('click', async () => {
-            logEl.innerText = "Buscando R-MSC02...";
+            const gender = parseInt(genderInput.value, 10);
+            const height = parseInt(heightInput.value, 10);
+            const age = parseInt(ageInput.value, 10);
+
+            localStorage.setItem('r_gender', gender);
+            localStorage.setItem('r_height', height);
+            localStorage.setItem('r_age', age);
+
+            logEl.innerText = "Iniciando conexión...";
+            statusEl.innerText = "Buscando báscula...";
+
             try {
                 const device = await navigator.bluetooth.requestDevice({
                     filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
                     optionalServices: [SERVICE_UUID]
                 });
 
-                log(`Dispositivo vinculado: ${device.name}`);
-                log("Conectando al servidor GATT...");
+                statusEl.innerText = "Conectando al servidor GATT...";
                 const server = await device.gatt.connect();
 
-                log("Accediendo al servicio 0x1A10...");
+                statusEl.innerText = "Accediendo a servicios...";
                 const service = await server.getPrimaryService(SERVICE_UUID);
 
-                log("Suscribiendo a notificaciones (0x2A10)...");
                 const notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
                 await notifyChar.startNotifications();
+
+                // Intentar enviar datos de usuario al canal de escritura
+                try {
+                    const writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
+                    const userPacket = buildUserPacket(gender, age, height);
+                    await writeChar.writeValue(userPacket);
+                    log(`Perfil enviado: Sexo=${gender === 1 ? 'H' : 'M'}, Altura=${height}cm, Edad=${age}`);
+                } catch (wErr) {
+                    log(`Aviso escritura: ${wErr.message}`);
+                }
+
+                statusEl.innerText = "¡Listo! Súbete descalzo a la báscula.";
+                log("Esperando estabilización de peso e impedancia...");
 
                 notifyChar.addEventListener('characteristicvaluechanged', (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
                     const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
                     log(`>>> TRAMA: ${hex}`);
+
+                    // Analizar paquete tipo 0x21 (Peso y estado)
+                    if (bytes.length >= 10 && bytes[0] === 0x55 && bytes[1] === 0xAA) {
+                        const rawWeight = (bytes[8] << 8) | bytes[9];
+                        const weightKg = (rawWeight / 100).toFixed(2);
+                        pesoVal.innerText = `${weightKg} kg`;
+
+                        // Impedancia si viene en bytes[6..7] o paquete dedicado
+                        const rawImp = (bytes[6] << 8) | bytes[7];
+                        if (rawImp > 0) {
+                            impVal.innerText = `${rawImp} Ω`;
+                        }
+
+                        if (bytes[5] === 0x01) {
+                            statusEl.innerText = "✓ Medición completada";
+                        }
+                    }
                 });
 
-                log("¡Suscripción lista! Súbete descalzo a la báscula.");
-
             } catch (err) {
+                statusEl.innerText = "Error de conexión";
                 log(`ERROR: ${err.message}`);
             }
         });
