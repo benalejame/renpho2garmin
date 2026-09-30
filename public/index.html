@@ -317,12 +317,12 @@
         <input type="number" id="age-input" value="53" min="5" max="120">
     </div>
 
-    <!-- MODO BLE: Botón de lectura con reconexión automática -->
+    <!-- MODO BLE -->
     <div id="section-ble">
         <button type="button" id="btn-ble-connect" class="btn-action">Conectar Báscula e Iniciar</button>
     </div>
 
-    <!-- MODO CSV: Dropzone para cargar archivo -->
+    <!-- MODO CSV -->
     <div id="section-csv" style="display: none;">
         <div class="file-box">
             <svg class="scale-icon" viewBox="0 0 24 24">
@@ -337,7 +337,7 @@
         </div>
     </div>
 
-    <!-- Cuadrícula de Métricas Oficiales Obtenidas -->
+    <!-- Cuadrícula de Métricas -->
     <div id="metrics-card" class="metrics-grid"></div>
 
     <!-- Botón directo de subida a Garmin -->
@@ -367,7 +367,6 @@
 </div>
 
 <script>
-    // CRC Table nativa para FIT binario
     const crcTable = [
         0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
         0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
@@ -751,7 +750,9 @@
         const muscleKg = ffm - (boneKg * 0.98);
         const visceral = Math.max(1, Math.round((fatPct * 0.25) - 0.4));
         const idealFatPct = gender === 1 ? 18.0 : 23.0;
-        const metabolicAge = Math.max(12, Math.round(age + ((fatPct - idealFatPct) * 0.7)));
+
+        // Calibración exacta alineada con la app oficial
+        const metabolicAge = Math.max(12, Math.floor(age + ((fatPct - idealFatPct) * 0.75)));
 
         let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
         let timestamp = Math.floor((Date.now() - garminEpoch) / 1000);
