@@ -70,7 +70,7 @@
             border-radius: 8px;
             font-family: monospace;
             font-size: 11px;
-            max-height: 200px;
+            max-height: 220px;
             overflow-y: auto;
             white-space: pre-wrap;
             word-break: break-all;
@@ -101,13 +101,13 @@
             <label for="age">Edad:</label>
             <input type="number" id="age" value="53" min="5" max="120">
         </div>
-        <button id="btn-conectar">Conectar a la Báscula</button>
+        <button id="btn-conectar">Conectar e Iniciar Medición</button>
     </div>
 
     <div class="card">
         <div class="display-val">
             <div>
-                <div class="metric-title">PESO</div>
+                <div class="metric-title">PESO FINAL</div>
                 <div class="metric-num" id="peso-val">--.-- kg</div>
             </div>
             <div>
@@ -134,7 +134,6 @@
         const heightInput = document.getElementById('height');
         const ageInput = document.getElementById('age');
 
-        // Cargar perfil guardado si existe
         if (localStorage.getItem('r_gender')) genderInput.value = localStorage.getItem('r_gender');
         if (localStorage.getItem('r_height')) heightInput.value = localStorage.getItem('r_height');
         if (localStorage.getItem('r_age')) ageInput.value = localStorage.getItem('r_age');
@@ -148,15 +147,19 @@
         const CHAR_NOTIFY_UUID = 0x2a10;
         const CHAR_WRITE_UUID = 0x2a11;
 
-        // Construir paquete de sincronización de usuario (Protocolo Chipsea/Yolanda)
+        // Comandos de sincronización extraídos del protocolo Chipsea
+        function getHandshakePacket() {
+            return new Uint8Array([0x02, 0x00, 0x00, 0x02]);
+        }
+
         function buildUserPacket(gender, age, height) {
-            // Cabecera: 0x55 0xAA 0x11
+            // Cabecera de configuración de usuario: 0x55 0xAA 0x11
             const payload = [0x55, 0xAA, 0x11, 0x00, 0x04, gender, age, height, 0x01];
-            let checksum = 0;
+            let cs = 0;
             for (let i = 0; i < payload.length; i++) {
-                checksum ^= payload[i]; // XOR o acumulación según variante
+                cs ^= payload[i];
             }
-            payload.push(checksum & 0xFF);
+            payload.push(cs & 0xFF);
             return new Uint8Array(payload);
         }
 
@@ -169,7 +172,7 @@
             localStorage.setItem('r_height', height);
             localStorage.setItem('r_age', age);
 
-            logEl.innerText = "Iniciando conexión...";
+            logEl.innerText = "Iniciando...";
             statusEl.innerText = "Buscando báscula...";
 
             try {
@@ -181,50 +184,58 @@
                 statusEl.innerText = "Conectando al servidor GATT...";
                 const server = await device.gatt.connect();
 
-                statusEl.innerText = "Accediendo a servicios...";
                 const service = await server.getPrimaryService(SERVICE_UUID);
-
                 const notifyChar = await service.getCharacteristic(CHAR_NOTIFY_UUID);
+                const writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
+
                 await notifyChar.startNotifications();
 
-                // Intentar enviar datos de usuario al canal de escritura
+                // 1. Envío de Handshake
                 try {
-                    const writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
-                    const userPacket = buildUserPacket(gender, age, height);
-                    await writeChar.writeValue(userPacket);
-                    log(`Perfil enviado: Sexo=${gender === 1 ? 'H' : 'M'}, Altura=${height}cm, Edad=${age}`);
-                } catch (wErr) {
-                    log(`Aviso escritura: ${wErr.message}`);
+                    await writeChar.writeValue(getHandshakePacket());
+                    log("Handshake 0x02 enviado.");
+                } catch (e) {
+                    try {
+                        await writeChar.writeValueWithoutResponse(getHandshakePacket());
+                    } catch (e2) {}
                 }
 
-                statusEl.innerText = "¡Listo! Súbete descalzo a la báscula.";
-                log("Esperando estabilización de peso e impedancia...");
+                // 2. Envío del perfil de usuario
+                setTimeout(async () => {
+                    try {
+                        const userPacket = buildUserPacket(gender, age, height);
+                        await writeChar.writeValue(userPacket);
+                        log(`Perfil enviado: Sexo=${gender === 1 ? 'H' : 'M'}, Altura=${height}cm, Edad=${age}`);
+                    } catch (e) {
+                        log(`Aviso perfil: ${e.message}`);
+                    }
+                }, 150);
+
+                statusEl.innerText = "¡Súbete descalzo y no bajes hasta completar!";
+                log("Escuchando flujo de tramas...");
 
                 notifyChar.addEventListener('characteristicvaluechanged', (event) => {
                     const bytes = new Uint8Array(event.target.value.buffer);
                     const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+
                     log(`>>> TRAMA: ${hex}`);
 
-                    // Analizar paquete tipo 0x21 (Peso y estado)
                     if (bytes.length >= 10 && bytes[0] === 0x55 && bytes[1] === 0xAA) {
                         const rawWeight = (bytes[8] << 8) | bytes[9];
-                        const weightKg = (rawWeight / 100).toFixed(2);
-                        pesoVal.innerText = `${weightKg} kg`;
+                        const wKg = (rawWeight / 100).toFixed(2);
+                        pesoVal.innerText = `${wKg} kg`;
 
-                        // Impedancia si viene en bytes[6..7] o paquete dedicado
-                        const rawImp = (bytes[6] << 8) | bytes[7];
-                        if (rawImp > 0) {
-                            impVal.innerText = `${rawImp} Ω`;
-                        }
-
-                        if (bytes[5] === 0x01) {
-                            statusEl.innerText = "✓ Medición completada";
+                        // Detección de impedancia en bytes 6-7 o tramas de cierre
+                        const imp = (bytes[6] << 8) | bytes[7];
+                        if (imp > 0) {
+                            impVal.innerText = `${imp} Ω`;
+                            statusEl.innerText = "✓ Medición completada con impedancia";
                         }
                     }
                 });
 
             } catch (err) {
-                statusEl.innerText = "Error de conexión";
+                statusEl.innerText = "Error";
                 log(`ERROR: ${err.message}`);
             }
         });
