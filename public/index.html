@@ -196,6 +196,82 @@
         .btn-sync:hover { background: var(--green-hover); }
         .btn-sync:disabled { background: #475569; cursor: not-allowed; }
 
+        /* Panel de medición activa y animación */
+        .live-scan-panel {
+            background: var(--bg-inner);
+            border: 1px solid var(--accent);
+            border-radius: 14px;
+            padding: 16px;
+            margin-bottom: 14px;
+            text-align: center;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .live-weight-val {
+            font-size: 38px;
+            font-weight: 800;
+            color: #38bdf8;
+            letter-spacing: -0.5px;
+            margin: 4px 0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .live-status-txt {
+            font-size: 13px;
+            color: var(--text-sub);
+            margin-bottom: 12px;
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 8px;
+            background: #1e293b;
+            border-radius: 999px;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 8px;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #0284c7, #38bdf8);
+            border-radius: 999px;
+            transition: width 0.2s ease;
+        }
+
+        .scan-waves {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+        }
+
+        .scan-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #38bdf8;
+            opacity: 0.3;
+            animation: pulseWave 1.2s infinite ease-in-out;
+        }
+
+        .scan-dot:nth-child(2) { animation-delay: 0.2s; }
+        .scan-dot:nth-child(3) { animation-delay: 0.4s; }
+        .scan-dot:nth-child(4) { animation-delay: 0.6s; }
+
+        @keyframes pulseWave {
+            0%, 100% { transform: scale(0.8); opacity: 0.3; }
+            50% { transform: scale(1.3); opacity: 1; filter: drop-shadow(0 0 4px #38bdf8); }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         .metrics-grid {
             display: grid;
             grid-template-columns: 1fr;
@@ -337,6 +413,21 @@
         </div>
     </div>
 
+    <!-- PANEL DE MEDIDA EN DIRECTO (ANIMACIÓN BLE) -->
+    <div id="live-scan-panel" class="live-scan-panel">
+        <div id="live-weight-val" class="live-weight-val">--.-- kg</div>
+        <div id="live-status-txt" class="live-status-txt">Esperando peso estable...</div>
+        <div class="progress-bar-bg">
+            <div id="live-progress-bar" class="progress-bar-fill"></div>
+        </div>
+        <div class="scan-waves">
+            <div class="scan-dot"></div>
+            <div class="scan-dot"></div>
+            <div class="scan-dot"></div>
+            <div class="scan-dot"></div>
+        </div>
+    </div>
+
     <!-- Cuadrícula de Métricas -->
     <div id="metrics-card" class="metrics-grid"></div>
 
@@ -396,6 +487,11 @@
     const btnSubmit = document.getElementById('btn-submit');
     const metricsGrid = document.getElementById('metrics-card');
 
+    const liveScanPanel = document.getElementById('live-scan-panel');
+    const liveWeightVal = document.getElementById('live-weight-val');
+    const liveStatusTxt = document.getElementById('live-status-txt');
+    const liveProgressBar = document.getElementById('live-progress-bar');
+
     if (localStorage.getItem('garmin_height')) heightInput.value = localStorage.getItem('garmin_height');
     if (localStorage.getItem('garmin_age')) ageInput.value = localStorage.getItem('garmin_age');
 
@@ -430,9 +526,9 @@
         document.getElementById('tab-csv').classList.toggle('active', mode === 'csv');
         document.getElementById('section-ble').style.display = mode === 'ble' ? 'block' : 'none';
         document.getElementById('section-csv').style.display = mode === 'csv' ? 'block' : 'none';
+        liveScanPanel.style.display = 'none';
     }
 
-    // Gestión de credenciales locales
     const emailInput = document.getElementById('email');
     const passwordInput = document.getElementById('password');
     const rememberCheckbox = document.getElementById('remember-me');
@@ -458,7 +554,6 @@
         toggleAuthBtn.innerText = isHidden ? '⚙️ Configurar credenciales de acceso' : 'Ocultar credenciales';
     });
 
-    // Clasificación física exacta (physique rating de 1 a 9)
     function calculatePhysiqueRating(peso, grasa, musculo, gender) {
         let physique = 6;
         if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
@@ -490,8 +585,9 @@
         7: "Delgado", 8: "En forma", 9: "Muy musculoso"
     };
 
-    // Render de métricas en UI y generación del FIT Base64
     function renderAndPrepareFit(peso, bmi, grasa, musculo, agua, hueso, visceral, metabolic, timestampSecs) {
+        liveScanPanel.style.display = 'none';
+
         const genderByte = (selectedGender === 'female') ? 0x00 : 0x01;
         const physique = calculatePhysiqueRating(peso, grasa, musculo, selectedGender);
         const physiqueLabel = PHYSIQUE_NAMES[physique] || physique;
@@ -515,11 +611,9 @@
         showStatus("Métricas listas. Pulsa el botón verde para subir a Garmin.", "success");
     }
 
-    // Encoder Binario FIT oficial (Garmin Index S2)
     function buildFitBase64(ts, peso, grasa, agua, musculo, hueso, visceral, metabolic, bmi, physique, genderByte) {
         let records = [];
 
-        // 1. File ID Message (Global 0) - Garmin Index S2
         records.push(
             0x40, 0x00, 0x00, 0x00, 0x00, 0x05,
             0x00, 0x01, 0x00,
@@ -531,7 +625,6 @@
         let tsB = new Uint8Array(new Uint32Array([ts]).buffer);
         records.push(0x00, 0x09, 0x01, 0x00, 0x7D, 0x09, 0xD2, 0x04, 0x00, 0x00, tsB[0], tsB[1], tsB[2], tsB[3]);
 
-        // 2. User Profile Message (Global 3)
         records.push(
             0x40, 0x00, 0x00, 0x03, 0x00, 0x07,
             0x01, 0x01, 0x00,
@@ -545,7 +638,6 @@
         let wProf = new Uint8Array(new Uint16Array([Math.round(peso * 10)]).buffer);
         records.push(0x00, genderByte, 0x28, wProf[0], wProf[1], 0x64, 0x5A, 0x00, 0x00, 0x00, 0x00);
 
-        // 3. Weight Scale Message (Global 30)
         records.push(
             0x40, 0x00, 0x00, 0x1E, 0x00, 0x0B,
             0xFD, 0x04, 0x86,
@@ -750,8 +842,6 @@
         const muscleKg = ffm - (boneKg * 0.98);
         const visceral = Math.max(1, Math.round((fatPct * 0.25) - 0.4));
         const idealFatPct = gender === 1 ? 18.0 : 23.0;
-
-        // Calibración exacta de edad metabólica
         const metabolicAge = Math.max(12, Math.floor(age + ((fatPct - idealFatPct) * 0.75)));
 
         let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
@@ -770,11 +860,15 @@
 
             if (bytes[0] === 0xAD && bytes.length >= 9) {
                 const frameId = bytes[8];
-                showStatus(`Midiendo segmentos con barra (${frameId}/20)...`, "loading");
+                const pct = Math.min(100, Math.round((frameId / 20) * 100));
+                liveProgressBar.style.width = `${pct}%`;
+                liveStatusTxt.innerText = `Escaneando electrodos y segmentos (${frameId}/20)...`;
                 queueWrite(buildAckB6(frameId));
             }
 
             if (fragMap['AD'] && fragMap['AE'] && fragMap['AF']) {
+                liveProgressBar.style.width = `100%`;
+                liveStatusTxt.innerText = "Procesando matriz bioeléctrica final...";
                 const fullPayload = new Uint8Array([...fragMap['AD'], ...fragMap['AE'], ...fragMap['AF']]);
                 parseCompleteBiaPayload(fullPayload);
                 fragMap = {};
@@ -786,12 +880,15 @@
             const rawWeight = (bytes[8] << 8) | bytes[9];
             if (rawWeight > 1000) {
                 finalWeightKg = rawWeight / 100;
-                showStatus(`Estabilizando peso: ${finalWeightKg.toFixed(2)} kg...`, "loading");
+                liveWeightVal.innerText = `${finalWeightKg.toFixed(2)} kg`;
+                liveStatusTxt.innerText = "Estabilizando peso en plataforma...";
+                liveProgressBar.style.width = "15%";
             }
         } else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20 && !b2Sent) {
             b2Sent = true;
             queueWrite(PKT_B2_INIT);
-            showStatus("Sujeta firme la barra... Escaneando electrodos", "loading");
+            liveStatusTxt.innerText = "Sujeta firme la barra. Iniciando barrido segmental...";
+            liveProgressBar.style.width = "25%";
         }
     }
 
@@ -822,7 +919,16 @@
         }
 
         queueWrite(PKT_INIT_FD);
-        showStatus("Listo. Súbete descalzo y sujeta la barra con los brazos extendidos.", "loading");
+
+        // Mostrar panel de pesaje dinámico
+        liveScanPanel.style.display = 'block';
+        liveWeightVal.innerText = "--.-- kg";
+        liveStatusTxt.innerText = "Súbete descalzo a la báscula y sujeta la barra";
+        liveProgressBar.style.width = "5%";
+        metricsGrid.style.display = 'none';
+        btnSubmit.style.display = 'none';
+
+        showStatus("Conexión activa. Realizando medición...", "loading");
     }
 
     document.getElementById('btn-ble-connect').addEventListener('click', async () => {
@@ -838,13 +944,11 @@
         try {
             let device = null;
 
-            // 1. Intentar reconexión rápida si existe en memoria
             if (navigator.bluetooth.getDevices) {
                 try {
                     const known = await navigator.bluetooth.getDevices();
                     const matched = known.find(d => d.name && (d.name.includes("R-MSC02") || d.name.startsWith("R-")));
                     if (matched) {
-                        // Timeout de 2.5s para no bloquearse si la báscula está en reposo
                         const connectPromise = matched.gatt.connect();
                         const timeoutPromise = new Promise((_, reject) => 
                             setTimeout(() => reject(new Error("timeout")), 2500)
@@ -857,7 +961,6 @@
                 }
             }
 
-            // 2. Si no había dispositivo en memoria o falló la reconexión rápida, abrir selector nativo
             if (!device) {
                 device = await navigator.bluetooth.requestDevice({
                     filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
