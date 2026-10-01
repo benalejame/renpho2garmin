@@ -751,7 +751,7 @@
         const visceral = Math.max(1, Math.round((fatPct * 0.25) - 0.4));
         const idealFatPct = gender === 1 ? 18.0 : 23.0;
 
-        // Calibración exacta alineada con la app oficial
+        // Calibración exacta de edad metabólica
         const metabolicAge = Math.max(12, Math.floor(age + ((fatPct - idealFatPct) * 0.75)));
 
         let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
@@ -833,25 +833,44 @@
         fragMap = {};
         writeQueue = [];
 
+        showStatus("Despierta la báscula pisándola suavemente...", "loading");
+
         try {
             let device = null;
+
+            // 1. Intentar reconexión rápida si existe en memoria
             if (navigator.bluetooth.getDevices) {
-                const known = await navigator.bluetooth.getDevices();
-                device = known.find(d => d.name && (d.name.includes("R-MSC02") || d.name.startsWith("R-")));
+                try {
+                    const known = await navigator.bluetooth.getDevices();
+                    const matched = known.find(d => d.name && (d.name.includes("R-MSC02") || d.name.startsWith("R-")));
+                    if (matched) {
+                        // Timeout de 2.5s para no bloquearse si la báscula está en reposo
+                        const connectPromise = matched.gatt.connect();
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error("timeout")), 2500)
+                        );
+                        await Promise.race([connectPromise, timeoutPromise]);
+                        device = matched;
+                    }
+                } catch (e) {
+                    device = null;
+                }
             }
 
+            // 2. Si no había dispositivo en memoria o falló la reconexión rápida, abrir selector nativo
             if (!device) {
                 device = await navigator.bluetooth.requestDevice({
                     filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
                     optionalServices: [SERVICE_UUID]
                 });
+                await device.gatt.connect();
             }
 
             await setupDeviceConnection(device);
         } catch (err) {
             btn.disabled = false;
             btn.innerText = "Conectar Báscula e Iniciar";
-            showStatus("Error de conexión: " + err.message, "error");
+            showStatus("Asegúrate de que la báscula tenga la pantalla encendida: " + err.message, "error");
         }
     });
 
