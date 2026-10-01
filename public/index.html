@@ -400,23 +400,27 @@
         <button type="button" class="tab-btn" id="tab-csv" onclick="switchMode('csv')">Importar CSV</button>
     </div>
 
+    <!-- Selector de Sexo (necesario en ambos para el cálculo de clasificación física) -->
     <div class="gender-selector">
         <button type="button" class="gender-btn active" id="btn-male">Hombre</button>
         <button type="button" class="gender-btn" id="btn-female">Mujer</button>
     </div>
 
-    <div class="form-row">
-        <label for="height-input">Altura (cm):</label>
-        <input type="number" id="height-input" value="174" min="50" max="250">
-    </div>
-    <div class="form-row">
-        <label for="age-input">Edad:</label>
-        <input type="number" id="age-input" value="53" min="5" max="120">
-    </div>
+    <!-- Parámetros Biométricos Físicos: solo requeridos para calcular en vivo vía BLE -->
+    <div id="profile-fields">
+        <div class="form-row">
+            <label for="height-input">Altura (cm):</label>
+            <input type="number" id="height-input" value="174" min="50" max="250">
+        </div>
+        <div class="form-row">
+            <label for="age-input">Edad:</label>
+            <input type="number" id="age-input" value="53" min="5" max="120">
+        </div>
 
-    <div class="form-row athlete-row">
-        <label for="athlete-mode" style="color: var(--text-main); font-weight: 500;">Modo Atleta (Renpho):</label>
-        <input type="checkbox" id="athlete-mode" checked>
+        <div class="form-row athlete-row">
+            <label for="athlete-mode" style="color: var(--text-main); font-weight: 500;">Modo Atleta (Renpho):</label>
+            <input type="checkbox" id="athlete-mode" checked>
+        </div>
     </div>
 
     <div id="section-ble">
@@ -554,6 +558,10 @@
         document.getElementById('tab-csv').classList.toggle('active', mode === 'csv');
         document.getElementById('section-ble').style.display = mode === 'ble' ? 'block' : 'none';
         document.getElementById('section-csv').style.display = mode === 'csv' ? 'block' : 'none';
+        
+        // Ocultar altura, edad y modo atleta en el modo CSV[span_1](start_span)[span_1](end_span)
+        document.getElementById('profile-fields').style.display = mode === 'ble' ? 'block' : 'none';
+        
         liveScanPanel.style.display = 'none';
     }
 
@@ -716,7 +724,7 @@
     }
 
     // ==========================================
-    //  PARSER CSV ORIGINAL
+    //  PARSER CSV ORIGINAL[span_2](start_span)[span_2](end_span)
     // ==========================================
     document.getElementById('csv-file').addEventListener('change', function(e) {
         let file = e.target.files[0];
@@ -891,8 +899,7 @@
     }
 
     function handleIncomingBytes(bytes) {
-        // 1. Trama 0xAD con cabecera segmental '55 AA 26'
-        // Es el barrido físico real de los 8 electrodos (frameId de 1 a 20)
+        // 1. Trama 0xAD con cabecera segmental '55 AA 26': barrido de los 8 electrodos (frameId de 1 a 20)
         if (bytes[0] === 0xAD && bytes.length >= 9 && bytes[1] === 0x55 && bytes[2] === 0xAA && bytes[3] === 0x26) {
             const frameId = bytes[8];
             const pct = Math.min(95, Math.round((frameId / 20) * 95));
@@ -1028,7 +1035,7 @@
     });
 
     // ==========================================
-    //  SUBIDA A GARMIN CONNECT (/api/upload)
+    //  SUBIDA A GARMIN CONNECT (/api/upload)[span_3](start_span)[span_3](end_span)
     // ==========================================
     btnSubmit.addEventListener('click', async function(e) {
         e.preventDefault();
