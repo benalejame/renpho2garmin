@@ -823,7 +823,7 @@
         const rLL = Math.round(rawLL / 6);
         const rPromedio = Math.round((rRA + rLA + rRL + rLL) / 4);
 
-        const weight = parseFloat(finalWeightKg || 73.55);
+        const weight = parseFloat(finalWeightKg || 72.55);
         const height = parseFloat(heightInput.value || 174);
         const age = parseInt(ageInput.value || 53, 10);
         const gender = selectedGender === 'male' ? 1 : 0;
@@ -841,8 +841,10 @@
         const boneKg = weight * 0.0557;
         const muscleKg = ffm - (boneKg * 0.98);
         const visceral = Math.max(1, Math.round((fatPct * 0.25) - 0.4));
-        const idealFatPct = gender === 1 ? 18.0 : 23.0;
-        const metabolicAge = Math.max(12, Math.floor(age + ((fatPct - idealFatPct) * 0.75)));
+
+        // Calibración exacta de edad metabólica de Renpho
+        const idealFatPct = gender === 1 ? (age >= 50 ? 20.0 : 18.0) : (age >= 50 ? 25.0 : 23.0);
+        const metabolicAge = Math.max(12, Math.floor(age + ((fatPct - idealFatPct) * 0.85)));
 
         let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
         let timestamp = Math.floor((Date.now() - garminEpoch) / 1000);
@@ -920,7 +922,6 @@
 
         queueWrite(PKT_INIT_FD);
 
-        // Mostrar panel de pesaje dinámico
         liveScanPanel.style.display = 'block';
         liveWeightVal.innerText = "--.-- kg";
         liveStatusTxt.innerText = "Súbete descalzo a la báscula y sujeta la barra";
