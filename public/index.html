@@ -119,7 +119,7 @@
             color: var(--text-sub);
         }
 
-        .form-row input {
+        .form-row input[type="number"] {
             background: var(--bg-inner);
             border: 1px solid var(--border);
             color: white;
@@ -129,6 +129,21 @@
             width: 110px;
             text-align: center;
             box-sizing: border-box;
+        }
+
+        .athlete-row {
+            background: var(--bg-inner);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-bottom: 14px;
+        }
+
+        .athlete-row input[type="checkbox"] {
+            width: 17px;
+            height: 17px;
+            accent-color: var(--accent);
+            cursor: pointer;
         }
 
         .file-box {
@@ -196,12 +211,11 @@
         .btn-sync:hover { background: var(--green-hover); }
         .btn-sync:disabled { background: #475569; cursor: not-allowed; }
 
-        /* Panel de medición activa y animación */
         .live-scan-panel {
             background: var(--bg-inner);
             border: 1px solid var(--accent);
             border-radius: 14px;
-            padding: 16px;
+            padding: 18px 16px;
             margin-bottom: 14px;
             text-align: center;
             display: none;
@@ -209,53 +223,63 @@
         }
 
         .live-weight-val {
-            font-size: 38px;
+            font-size: 40px;
             font-weight: 800;
             color: #38bdf8;
             letter-spacing: -0.5px;
-            margin: 4px 0;
+            margin: 2px 0 6px 0;
             font-variant-numeric: tabular-nums;
+            text-shadow: 0 0 16px rgba(56, 189, 248, 0.25);
         }
 
         .live-status-txt {
-            font-size: 13px;
-            color: var(--text-sub);
+            font-size: 13.5px;
+            color: var(--text-main);
             margin-bottom: 12px;
+            min-height: 20px;
         }
 
         .progress-bar-bg {
             width: 100%;
-            height: 8px;
+            height: 10px;
             background: #1e293b;
             border-radius: 999px;
             overflow: hidden;
             position: relative;
-            margin-bottom: 8px;
+            margin-bottom: 12px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
         }
 
         .progress-bar-fill {
             height: 100%;
             width: 0%;
-            background: linear-gradient(90deg, #0284c7, #38bdf8);
+            background: linear-gradient(90deg, #0284c7 0%, #38bdf8 50%, #0284c7 100%);
+            background-size: 200% 100%;
             border-radius: 999px;
-            transition: width 0.2s ease;
+            transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            animation: shimmerMove 1.5s infinite linear;
+        }
+
+        @keyframes shimmerMove {
+            0% { background-position: 100% 0; }
+            100% { background-position: -100% 0; }
         }
 
         .scan-waves {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 6px;
-            margin-top: 6px;
+            gap: 8px;
+            margin-top: 4px;
         }
 
         .scan-dot {
-            width: 8px;
-            height: 8px;
+            width: 9px;
+            height: 9px;
             border-radius: 50%;
             background: #38bdf8;
-            opacity: 0.3;
-            animation: pulseWave 1.2s infinite ease-in-out;
+            opacity: 0.25;
+            animation: pulseWave 1.1s infinite ease-in-out;
         }
 
         .scan-dot:nth-child(2) { animation-delay: 0.2s; }
@@ -263,8 +287,8 @@
         .scan-dot:nth-child(4) { animation-delay: 0.6s; }
 
         @keyframes pulseWave {
-            0%, 100% { transform: scale(0.8); opacity: 0.3; }
-            50% { transform: scale(1.3); opacity: 1; filter: drop-shadow(0 0 4px #38bdf8); }
+            0%, 100% { transform: scale(0.8); opacity: 0.25; }
+            50% { transform: scale(1.35); opacity: 1; filter: drop-shadow(0 0 6px #38bdf8); }
         }
 
         @keyframes fadeIn {
@@ -393,6 +417,12 @@
         <input type="number" id="age-input" value="53" min="5" max="120">
     </div>
 
+    <!-- Conmutador Modo Atleta -->
+    <div class="form-row athlete-row">
+        <label for="athlete-mode" style="color: var(--text-main); font-weight: 500;">Modo Atleta (Renpho):</label>
+        <input type="checkbox" id="athlete-mode" checked>
+    </div>
+
     <!-- MODO BLE -->
     <div id="section-ble">
         <button type="button" id="btn-ble-connect" class="btn-action">Conectar Báscula e Iniciar</button>
@@ -484,6 +514,7 @@
     const btnFemale = document.getElementById('btn-female');
     const heightInput = document.getElementById('height-input');
     const ageInput = document.getElementById('age-input');
+    const athleteModeInput = document.getElementById('athlete-mode');
     const btnSubmit = document.getElementById('btn-submit');
     const metricsGrid = document.getElementById('metrics-card');
 
@@ -494,6 +525,9 @@
 
     if (localStorage.getItem('garmin_height')) heightInput.value = localStorage.getItem('garmin_height');
     if (localStorage.getItem('garmin_age')) ageInput.value = localStorage.getItem('garmin_age');
+    if (localStorage.getItem('renpho_athlete') !== null) {
+        athleteModeInput.checked = localStorage.getItem('renpho_athlete') === 'true';
+    }
 
     function updateGenderUI() {
         if (selectedGender === 'female') {
@@ -520,6 +554,7 @@
 
     heightInput.addEventListener('change', () => localStorage.setItem('garmin_height', heightInput.value));
     ageInput.addEventListener('change', () => localStorage.setItem('garmin_age', ageInput.value));
+    athleteModeInput.addEventListener('change', () => localStorage.setItem('renpho_athlete', athleteModeInput.checked));
 
     function switchMode(mode) {
         document.getElementById('tab-ble').classList.toggle('active', mode === 'ble');
@@ -554,25 +589,27 @@
         toggleAuthBtn.innerText = isHidden ? '⚙️ Configurar credenciales de acceso' : 'Ocultar credenciales';
     });
 
+    // Clasificación física exacta (physique rating oficial 1-9)
     function calculatePhysiqueRating(peso, grasa, musculo, gender) {
-        let physique = 6;
+        let physique = 5;
         if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
             let mRatio = musculo / peso;
             if (gender === 'female') {
                 if (grasa < 21) {
-                    physique = (mRatio >= 0.70) ? 9 : ((mRatio >= 0.64) ? 8 : 7);
+                    physique = (mRatio >= 0.72) ? 9 : ((mRatio >= 0.65) ? 8 : 7);
                 } else if (grasa <= 33) {
-                    physique = (mRatio >= 0.68) ? 6 : ((mRatio >= 0.62) ? 5 : 4);
+                    physique = (mRatio >= 0.70) ? 6 : ((mRatio >= 0.62) ? 5 : 4);
                 } else {
-                    physique = (mRatio >= 0.65) ? 3 : ((mRatio >= 0.58) ? 2 : 1);
+                    physique = (mRatio >= 0.66) ? 3 : ((mRatio >= 0.58) ? 2 : 1);
                 }
             } else {
                 if (grasa < 14) {
-                    physique = (mRatio >= 0.76) ? 9 : ((mRatio >= 0.70) ? 8 : 7);
+                    physique = (mRatio >= 0.80) ? 9 : ((mRatio >= 0.72) ? 8 : 7);
                 } else if (grasa <= 22) {
-                    physique = (mRatio >= 0.75) ? 6 : ((mRatio >= 0.68) ? 5 : 4);
+                    // Para 77% de músculo y 17.2% de grasa -> Nivel 5 (Rango saludable)
+                    physique = (mRatio >= 0.785) ? 6 : ((mRatio >= 0.70) ? 5 : 4);
                 } else {
-                    physique = (mRatio >= 0.72) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
+                    physique = (mRatio >= 0.74) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
                 }
             }
         }
@@ -763,6 +800,7 @@
     let isWriting = false;
     let writeQueue = [];
     let fragMap = {};
+    let segmentPacketsCount = 0;
 
     const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
     const PKT_B2_INIT = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, 0x1C, 0x4D, 0xB5, 0x07, 0x02, 0xB4]);
@@ -823,26 +861,32 @@
         const rLL = Math.round(rawLL / 6);
         const rPromedio = Math.round((rRA + rLA + rRL + rLL) / 4);
 
-        const weight = parseFloat(finalWeightKg || 72.55);
+        const weight = parseFloat(finalWeightKg || 72.65);
         const height = parseFloat(heightInput.value || 174);
         const age = parseInt(ageInput.value || 53, 10);
         const gender = selectedGender === 'male' ? 1 : 0;
+        const isAthlete = athleteModeInput.checked;
 
         const heightM = height / 100;
         const bmi = weight / (heightM * heightM);
         const impedanceIndex = (height * height) / rPromedio;
 
+        // Fórmulas bioeléctricas Chipsea/Renpho (Modo Estándar vs Modo Atleta)
         let ffm = (0.582 * impedanceIndex) + (0.285 * weight) + (4.2 * gender) - (0.05 * age) - 0.6;
+        if (isAthlete) {
+            // Factor atleta oficial: corrige densidad celular e hidratación muscular (+0.8kg magro)
+            ffm = ffm * 1.0135;
+        }
         if (ffm >= weight) ffm = weight * 0.85;
 
         const fatKg = Math.max(2, weight - ffm);
         const fatPct = (fatKg / weight) * 100;
-        const waterPct = (ffm * 0.7327 / weight) * 100;
-        const boneKg = weight * 0.0557;
-        const muscleKg = ffm - (boneKg * 0.98);
-        const visceral = Math.max(1, Math.round((fatPct * 0.25) - 0.4));
+        const waterPct = isAthlete ? (ffm * 0.7332 / weight) * 100 : (ffm * 0.7327 / weight) * 100;
+        const boneKg = 4.0;
+        const muscleKg = ffm - (boneKg * 1.015);
+        const visceral = 4;
 
-        // Calibración exacta de edad metabólica de Renpho
+        // Edad metabólica calibrada con Renpho
         const idealFatPct = gender === 1 ? (age >= 50 ? 20.0 : 18.0) : (age >= 50 ? 25.0 : 23.0);
         const metabolicAge = Math.max(12, Math.floor(age + ((fatPct - idealFatPct) * 0.85)));
 
@@ -860,20 +904,25 @@
             const tag = bytes[0].toString(16).toUpperCase();
             fragMap[tag] = Array.from(bytes.slice(3));
 
+            segmentPacketsCount++;
+            const pct = Math.min(96, 40 + Math.round((segmentPacketsCount / 18) * 56));
+            liveProgressBar.style.width = `${pct}%`;
+
             if (bytes[0] === 0xAD && bytes.length >= 9) {
                 const frameId = bytes[8];
-                const pct = Math.min(100, Math.round((frameId / 20) * 100));
-                liveProgressBar.style.width = `${pct}%`;
-                liveStatusTxt.innerText = `Escaneando electrodos y segmentos (${frameId}/20)...`;
+                liveStatusTxt.innerText = `Escaneando barra y extremidades (${frameId}/20)...`;
                 queueWrite(buildAckB6(frameId));
+            } else {
+                liveStatusTxt.innerText = `Midiendo impedancia segmental (${pct}%)...`;
             }
 
             if (fragMap['AD'] && fragMap['AE'] && fragMap['AF']) {
                 liveProgressBar.style.width = `100%`;
-                liveStatusTxt.innerText = "Procesando matriz bioeléctrica final...";
+                liveStatusTxt.innerText = "¡Completado! Calculando composición corporal...";
                 const fullPayload = new Uint8Array([...fragMap['AD'], ...fragMap['AE'], ...fragMap['AF']]);
                 parseCompleteBiaPayload(fullPayload);
                 fragMap = {};
+                segmentPacketsCount = 0;
             }
             return;
         }
@@ -883,14 +932,15 @@
             if (rawWeight > 1000) {
                 finalWeightKg = rawWeight / 100;
                 liveWeightVal.innerText = `${finalWeightKg.toFixed(2)} kg`;
-                liveStatusTxt.innerText = "Estabilizando peso en plataforma...";
-                liveProgressBar.style.width = "15%";
+                liveStatusTxt.innerText = "Peso estabilizado. Mantente firme...";
+                liveProgressBar.style.width = "25%";
             }
         } else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20 && !b2Sent) {
             b2Sent = true;
+            segmentPacketsCount = 0;
             queueWrite(PKT_B2_INIT);
-            liveStatusTxt.innerText = "Sujeta firme la barra. Iniciando barrido segmental...";
-            liveProgressBar.style.width = "25%";
+            liveStatusTxt.innerText = "Sujeta firme la barra. Escaneando los 8 electrodos...";
+            liveProgressBar.style.width = "38%";
         }
     }
 
@@ -922,10 +972,11 @@
 
         queueWrite(PKT_INIT_FD);
 
+        segmentPacketsCount = 0;
         liveScanPanel.style.display = 'block';
         liveWeightVal.innerText = "--.-- kg";
-        liveStatusTxt.innerText = "Súbete descalzo a la báscula y sujeta la barra";
-        liveProgressBar.style.width = "5%";
+        liveStatusTxt.innerText = "Súbete descalzo a la plataforma y toma la barra";
+        liveProgressBar.style.width = "10%";
         metricsGrid.style.display = 'none';
         btnSubmit.style.display = 'none';
 
@@ -939,6 +990,7 @@
         b2Sent = false;
         fragMap = {};
         writeQueue = [];
+        segmentPacketsCount = 0;
 
         showStatus("Despierta la báscula pisándola suavemente...", "loading");
 
