@@ -223,7 +223,7 @@
         }
 
         .live-weight-val {
-            font-size: 40px;
+            font-size: 42px;
             font-weight: 800;
             color: #38bdf8;
             letter-spacing: -0.5px;
@@ -256,7 +256,7 @@
             background: linear-gradient(90deg, #0284c7 0%, #38bdf8 50%, #0284c7 100%);
             background-size: 200% 100%;
             border-radius: 999px;
-            transition: width 0.25s linear;
+            transition: width 0.2s ease-out;
             animation: shimmerMove 1.5s infinite linear;
         }
 
@@ -395,19 +395,16 @@
 <div class="card">
     <h1>Renpho ➔ Garmin Connect</h1>
 
-    <!-- Pestañas de Modo -->
     <div class="tabs">
         <button type="button" class="tab-btn active" id="tab-ble" onclick="switchMode('ble')">Báscula BLE (1 Clic)</button>
         <button type="button" class="tab-btn" id="tab-csv" onclick="switchMode('csv')">Importar CSV</button>
     </div>
 
-    <!-- Selector de Sexo -->
     <div class="gender-selector">
         <button type="button" class="gender-btn active" id="btn-male">Hombre</button>
         <button type="button" class="gender-btn" id="btn-female">Mujer</button>
     </div>
 
-    <!-- Parámetros Biométricos Físicos -->
     <div class="form-row">
         <label for="height-input">Altura (cm):</label>
         <input type="number" id="height-input" value="174" min="50" max="250">
@@ -417,18 +414,15 @@
         <input type="number" id="age-input" value="53" min="5" max="120">
     </div>
 
-    <!-- Conmutador Modo Atleta -->
     <div class="form-row athlete-row">
         <label for="athlete-mode" style="color: var(--text-main); font-weight: 500;">Modo Atleta (Renpho):</label>
         <input type="checkbox" id="athlete-mode" checked>
     </div>
 
-    <!-- MODO BLE -->
     <div id="section-ble">
         <button type="button" id="btn-ble-connect" class="btn-action">Conectar Báscula e Iniciar</button>
     </div>
 
-    <!-- MODO CSV -->
     <div id="section-csv" style="display: none;">
         <div class="file-box">
             <svg class="scale-icon" viewBox="0 0 24 24">
@@ -443,10 +437,10 @@
         </div>
     </div>
 
-    <!-- PANEL DE MEDIDA EN DIRECTO (ANIMACIÓN BLE) -->
+    <!-- PANEL DE MEDIDA EN DIRECTO -->
     <div id="live-scan-panel" class="live-scan-panel">
         <div id="live-weight-val" class="live-weight-val">--.-- kg</div>
-        <div id="live-status-txt" class="live-status-txt">Esperando peso estable...</div>
+        <div id="live-status-txt" class="live-status-txt">Súbete descalzo a la báscula...</div>
         <div class="progress-bar-bg">
             <div id="live-progress-bar" class="progress-bar-fill"></div>
         </div>
@@ -458,13 +452,10 @@
         </div>
     </div>
 
-    <!-- Cuadrícula de Métricas -->
     <div id="metrics-card" class="metrics-grid"></div>
 
-    <!-- Botón directo de subida a Garmin -->
     <button type="button" id="btn-submit" class="btn-sync">Subir medición a Garmin Connect</button>
 
-    <!-- Credenciales de Garmin Connect -->
     <form id="auth-form" onsubmit="return false;" style="margin-top: 14px;">
         <div id="auth-panel" class="auth-container">
             <div class="input-group">
@@ -510,8 +501,7 @@
     let generatedFitBase64 = null;
     let selectedGender = localStorage.getItem('garmin_gender') || 'male';
     let cachedDevice = null;
-    let progressTimer = null;
-    let isProgressActive = false;
+    let weightLocked = false;
 
     const btnMale = document.getElementById('btn-male');
     const btnFemale = document.getElementById('btn-female');
@@ -565,8 +555,6 @@
         document.getElementById('section-ble').style.display = mode === 'ble' ? 'block' : 'none';
         document.getElementById('section-csv').style.display = mode === 'csv' ? 'block' : 'none';
         liveScanPanel.style.display = 'none';
-        if (progressTimer) clearInterval(progressTimer);
-        isProgressActive = false;
     }
 
     const emailInput = document.getElementById('email');
@@ -626,8 +614,6 @@
     };
 
     function renderAndPrepareFit(peso, bmi, grasa, musculo, agua, hueso, visceral, metabolic, timestampSecs) {
-        if (progressTimer) clearInterval(progressTimer);
-        isProgressActive = false;
         liveScanPanel.style.display = 'none';
 
         const genderByte = (selectedGender === 'female') ? 0x00 : 0x01;
@@ -800,7 +786,6 @@
     // ==========================================
     const SERVICE_UUID = 0x1a10;
     let writeCharGlobal = null;
-    let b2Sent = false;
     let finalWeightKg = 0;
     let isWriting = false;
     let writeQueue = [];
@@ -840,33 +825,9 @@
         processWriteQueue();
     }
 
-    // El progreso de los electrodos arranca únicamente cuando el peso se ha fijado
-    function triggerElectrodeScanningProgress() {
-        if (isProgressActive) return;
-        isProgressActive = true;
-        if (progressTimer) clearInterval(progressTimer);
-
-        let progress = 5;
-        liveProgressBar.style.width = '5%';
-        liveStatusTxt.innerText = "Peso fijado. Sujeta la barra... Escaneando electrodos";
-
-        progressTimer = setInterval(() => {
-            if (progress < 92) {
-                progress += 2.5;
-                liveProgressBar.style.width = `${Math.round(progress)}%`;
-                if (progress > 30 && progress < 65) {
-                    liveStatusTxt.innerText = "Midiendo impedancia segmental de 8 polos...";
-                } else if (progress >= 65) {
-                    liveStatusTxt.innerText = "Analizando resistencia de tronco y extremidades...";
-                }
-            }
-        }, 110);
-    }
-
     function parseCompleteBiaPayload(payload) {
-        if (progressTimer) clearInterval(progressTimer);
         liveProgressBar.style.width = '100%';
-        liveStatusTxt.innerText = "¡Completado! Calculando parámetros...";
+        liveStatusTxt.innerText = "¡Completado! Extrayendo composición corporal...";
 
         let idx = -1;
         for (let i = 0; i < payload.length - 2; i++) {
@@ -923,24 +884,28 @@
 
         setTimeout(() => {
             renderAndPrepareFit(weight, bmi, fatPct, muscleKg, waterPct, boneKg, visceral, metabolicAge, timestamp);
-        }, 250);
+        }, 200);
 
         const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, b[9], b[10], 0xB5, 0x07, 0x02, 0x06]);
         queueWrite(pktFinal);
     }
 
     function handleIncomingBytes(bytes) {
-        // Paquetes BIA segmentales
+        // 1. Trama 0xAD con cabecera segmental '55 AA 26'
+        // Es el barrido físico real de los 8 electrodos (frameId de 1 a 20)
+        if (bytes[0] === 0xAD && bytes.length >= 9 && bytes[1] === 0x55 && bytes[2] === 0xAA && bytes[3] === 0x26) {
+            const frameId = bytes[8];
+            const pct = Math.min(95, Math.round((frameId / 20) * 95));
+            liveProgressBar.style.width = `${pct}%`;
+            liveStatusTxt.innerText = `Midiendo impedancia segmental (${frameId}/20)... Sujeta la barra firme`;
+            queueWrite(buildAckB6(frameId));
+            return;
+        }
+
+        // 2. Paquetes fragmentados finales (AD, AE, AF) para reconstruir la matriz maestra 0x25
         if (bytes[0] === 0xAD || bytes[0] === 0xAE || bytes[0] === 0xAF) {
             const tag = bytes[0].toString(16).toUpperCase();
             fragMap[tag] = Array.from(bytes.slice(3));
-
-            if (!isProgressActive) triggerElectrodeScanningProgress();
-
-            if (bytes[0] === 0xAD && bytes.length >= 9) {
-                const frameId = bytes[8];
-                queueWrite(buildAckB6(frameId));
-            }
 
             if (fragMap['AD'] && fragMap['AE'] && fragMap['AF']) {
                 const fullPayload = new Uint8Array([...fragMap['AD'], ...fragMap['AE'], ...fragMap['AF']]);
@@ -950,34 +915,37 @@
             return;
         }
 
-        // Trama 0x21: lectura de peso dinámica
+        // 3. Trama 0x21: Peso dinámico y fijación
         if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
             const rawWeight = (bytes[8] << 8) | bytes[9];
             if (rawWeight > 1000) {
                 finalWeightKg = rawWeight / 100;
                 liveWeightVal.innerText = `${finalWeightKg.toFixed(2)} kg`;
-                if (!isProgressActive) {
-                    liveStatusTxt.innerText = "Estabilizando peso en la plataforma...";
+
+                const isLocked = (bytes[7] === 0x01 || bytes[7] === 0x02);
+                if (isLocked && !weightLocked) {
+                    weightLocked = true;
+                    liveStatusTxt.innerText = "¡Peso fijado! Sujeta la barra... Iniciando electrodos";
+                    liveProgressBar.style.width = "5%";
+                } else if (!weightLocked) {
+                    liveStatusTxt.innerText = "Estabilizando peso en plataforma...";
                     liveProgressBar.style.width = "0%";
                 }
             }
         } 
-        // Trama 0x20: peso estabilizado -> la báscula inicia el circuito de bioimpedancia
-        else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20 && !b2Sent) {
-            b2Sent = true;
+        // 4. Trama 0x20: Handshake de activación
+        else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20) {
             queueWrite(PKT_B2_INIT);
-            triggerElectrodeScanningProgress();
         }
     }
 
     async function setupDeviceConnection(device) {
         cachedDevice = device;
+        weightLocked = false;
 
         device.addEventListener('gattserverdisconnected', () => {
             document.getElementById('btn-ble-connect').disabled = false;
             document.getElementById('btn-ble-connect').innerText = "Conectar Báscula e Iniciar";
-            if (progressTimer) clearInterval(progressTimer);
-            isProgressActive = false;
         });
 
         showStatus("Enlazando con la báscula...", "loading");
@@ -1002,9 +970,6 @@
 
         queueWrite(PKT_INIT_FD);
 
-        // Reset visual: la barra espera fija en 0% a que se termine de fijar el peso
-        isProgressActive = false;
-        if (progressTimer) clearInterval(progressTimer);
         liveScanPanel.style.display = 'block';
         liveWeightVal.innerText = "--.-- kg";
         liveStatusTxt.innerText = "Súbete descalzo a la plataforma y toma la barra";
@@ -1015,9 +980,7 @@
         showStatus("Conexión establecida. Súbete a la báscula.", "loading");
     }
 
-    // Conexión automática sin re-solicitar emparejamiento
     async function getOrReconnectScale() {
-        // 1. Instancia activa en la memoria de la ventana
         if (cachedDevice && cachedDevice.gatt) {
             try {
                 if (!cachedDevice.gatt.connected) {
@@ -1027,52 +990,17 @@
             } catch (err) {}
         }
 
-        // 2. Comprobar dispositivos previamente autorizados en el navegador
         if (navigator.bluetooth.getDevices) {
             try {
                 const devices = await navigator.bluetooth.getDevices();
                 const matched = devices.find(d => d.name && (d.name.includes("R-MSC02") || d.name.startsWith("R-")));
-
                 if (matched) {
-                    // Estrategia combinada: si no conecta de inmediato, escuchar su publicidad BLE al encenderse
-                    const connectDirect = async () => {
-                        try { return await matched.gatt.connect(); } catch (e) { return null; }
-                    };
-
-                    let server = await connectDirect();
-
-                    if (!server && matched.watchAdvertisements) {
-                        const abortCtrl = new AbortController();
-                        server = await new Promise(async (resolve) => {
-                            const timer = setTimeout(() => {
-                                abortCtrl.abort();
-                                resolve(null);
-                            }, 3500);
-
-                            matched.addEventListener('advertisementreceived', async () => {
-                                clearTimeout(timer);
-                                abortCtrl.abort();
-                                try {
-                                    const s = await matched.gatt.connect();
-                                    resolve(s);
-                                } catch (e) { resolve(null); }
-                            }, { once: true, signal: abortCtrl.signal });
-
-                            try {
-                                await matched.watchAdvertisements({ signal: abortCtrl.signal });
-                            } catch (e) {
-                                clearTimeout(timer);
-                                resolve(null);
-                            }
-                        });
-                    }
-
-                    if (server) return matched;
+                    await matched.gatt.connect();
+                    return matched;
                 }
             } catch (e) {}
         }
 
-        // 3. Si no hay permisos previos o no responde la radio, abrir selector nativo
         return await navigator.bluetooth.requestDevice({
             filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
             optionalServices: [SERVICE_UUID]
@@ -1083,11 +1011,9 @@
         const btn = document.getElementById('btn-ble-connect');
         btn.disabled = true;
         btn.innerText = "Conectando...";
-        b2Sent = false;
+        weightLocked = false;
         fragMap = {};
         writeQueue = [];
-        isProgressActive = false;
-        if (progressTimer) clearInterval(progressTimer);
 
         showStatus("Buscando báscula... Asegúrate de que la pantalla LED esté encendida.", "loading");
 
