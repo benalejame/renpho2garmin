@@ -256,7 +256,7 @@
             background: linear-gradient(90deg, #0284c7 0%, #38bdf8 50%, #0284c7 100%);
             background-size: 200% 100%;
             border-radius: 999px;
-            transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: width 0.25s linear;
             animation: shimmerMove 1.5s infinite linear;
         }
 
@@ -509,6 +509,8 @@
 
     let generatedFitBase64 = null;
     let selectedGender = localStorage.getItem('garmin_gender') || 'male';
+    let cachedDevice = null; // Instancia en memoria persistente de la báscula
+    let progressTimer = null; // Animación progresiva suave
 
     const btnMale = document.getElementById('btn-male');
     const btnFemale = document.getElementById('btn-female');
@@ -562,6 +564,7 @@
         document.getElementById('section-ble').style.display = mode === 'ble' ? 'block' : 'none';
         document.getElementById('section-csv').style.display = mode === 'csv' ? 'block' : 'none';
         liveScanPanel.style.display = 'none';
+        if (progressTimer) clearInterval(progressTimer);
     }
 
     const emailInput = document.getElementById('email');
@@ -589,7 +592,6 @@
         toggleAuthBtn.innerText = isHidden ? '⚙️ Configurar credenciales de acceso' : 'Ocultar credenciales';
     });
 
-    // Clasificación física exacta (physique rating oficial 1-9)
     function calculatePhysiqueRating(peso, grasa, musculo, gender) {
         let physique = 5;
         if (!isNaN(grasa) && !isNaN(musculo) && peso > 0) {
@@ -606,7 +608,6 @@
                 if (grasa < 14) {
                     physique = (mRatio >= 0.80) ? 9 : ((mRatio >= 0.72) ? 8 : 7);
                 } else if (grasa <= 22) {
-                    // Para 77% de músculo y 17.2% de grasa -> Nivel 5 (Rango saludable)
                     physique = (mRatio >= 0.785) ? 6 : ((mRatio >= 0.70) ? 5 : 4);
                 } else {
                     physique = (mRatio >= 0.74) ? 3 : ((mRatio >= 0.65) ? 2 : 1);
@@ -623,6 +624,7 @@
     };
 
     function renderAndPrepareFit(peso, bmi, grasa, musculo, agua, hueso, visceral, metabolic, timestampSecs) {
+        if (progressTimer) clearInterval(progressTimer);
         liveScanPanel.style.display = 'none';
 
         const genderByte = (selectedGender === 'female') ? 0x00 : 0x01;
@@ -800,7 +802,7 @@
     let isWriting = false;
     let writeQueue = [];
     let fragMap = {};
-    let segmentPacketsCount = 0;
+    let currentProgress = 0;
 
     const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
     const PKT_B2_INIT = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, 0x1C, 0x4D, 0xB5, 0x07, 0x02, 0xB4]);
@@ -836,7 +838,31 @@
         processWriteQueue();
     }
 
+    function startBioProgress() {
+        if (progressTimer) clearInterval(progressTimer);
+        currentProgress = 25;
+        liveProgressBar.style.width = '25%';
+        liveStatusTxt.innerText = "Escaneando electrodos de pies y manos...";
+
+        // Progreso suave continuo simulando los 3.5 segundos reales de barrido
+        progressTimer = setInterval(() => {
+            if (currentProgress < 88) {
+                currentProgress += 3.5;
+                liveProgressBar.style.width = `${Math.round(currentProgress)}%`;
+                if (currentProgress > 50 && currentProgress < 75) {
+                    liveStatusTxt.innerText = "Midiendo impedancia segmental de 8 polos...";
+                } else if (currentProgress >= 75) {
+                    liveStatusTxt.innerText = "Procesando señales de bioimpedancia...";
+                }
+            }
+        }, 120);
+    }
+
     function parseCompleteBiaPayload(payload) {
+        if (progressTimer) clearInterval(progressTimer);
+        liveProgressBar.style.width = '100%';
+        liveStatusTxt.innerText = "¡Completado! Extrayendo composición corporal...";
+
         let idx = -1;
         for (let i = 0; i < payload.length - 2; i++) {
             if (payload[i] === 0x55 && payload[i+1] === 0xAA && payload[i+2] === 0x25) {
@@ -871,10 +897,8 @@
         const bmi = weight / (heightM * heightM);
         const impedanceIndex = (height * height) / rPromedio;
 
-        // Fórmulas bioeléctricas Chipsea/Renpho (Modo Estándar vs Modo Atleta)
         let ffm = (0.582 * impedanceIndex) + (0.285 * weight) + (4.2 * gender) - (0.05 * age) - 0.6;
         if (isAthlete) {
-            // Factor atleta oficial: corrige densidad celular e hidratación muscular (+0.8kg magro)
             ffm = ffm * 1.0135;
         }
         if (ffm >= weight) ffm = weight * 0.85;
@@ -886,14 +910,15 @@
         const muscleKg = ffm - (boneKg * 1.015);
         const visceral = 4;
 
-        // Edad metabólica calibrada con Renpho
         const idealFatPct = gender === 1 ? (age >= 50 ? 20.0 : 18.0) : (age >= 50 ? 25.0 : 23.0);
         const metabolicAge = Math.max(12, Math.floor(age + ((fatPct - idealFatPct) * 0.85)));
 
         let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
         let timestamp = Math.floor((Date.now() - garminEpoch) / 1000);
 
-        renderAndPrepareFit(weight, bmi, fatPct, muscleKg, waterPct, boneKg, visceral, metabolicAge, timestamp);
+        setTimeout(() => {
+            renderAndPrepareFit(weight, bmi, fatPct, muscleKg, waterPct, boneKg, visceral, metabolicAge, timestamp);
+        }, 300);
 
         const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, b[9], b[10], 0xB5, 0x07, 0x02, 0x06]);
         queueWrite(pktFinal);
@@ -904,25 +929,15 @@
             const tag = bytes[0].toString(16).toUpperCase();
             fragMap[tag] = Array.from(bytes.slice(3));
 
-            segmentPacketsCount++;
-            const pct = Math.min(96, 40 + Math.round((segmentPacketsCount / 18) * 56));
-            liveProgressBar.style.width = `${pct}%`;
-
             if (bytes[0] === 0xAD && bytes.length >= 9) {
                 const frameId = bytes[8];
-                liveStatusTxt.innerText = `Escaneando barra y extremidades (${frameId}/20)...`;
                 queueWrite(buildAckB6(frameId));
-            } else {
-                liveStatusTxt.innerText = `Midiendo impedancia segmental (${pct}%)...`;
             }
 
             if (fragMap['AD'] && fragMap['AE'] && fragMap['AF']) {
-                liveProgressBar.style.width = `100%`;
-                liveStatusTxt.innerText = "¡Completado! Calculando composición corporal...";
                 const fullPayload = new Uint8Array([...fragMap['AD'], ...fragMap['AE'], ...fragMap['AF']]);
                 parseCompleteBiaPayload(fullPayload);
                 fragMap = {};
-                segmentPacketsCount = 0;
             }
             return;
         }
@@ -932,26 +947,29 @@
             if (rawWeight > 1000) {
                 finalWeightKg = rawWeight / 100;
                 liveWeightVal.innerText = `${finalWeightKg.toFixed(2)} kg`;
-                liveStatusTxt.innerText = "Peso estabilizado. Mantente firme...";
-                liveProgressBar.style.width = "25%";
+                liveStatusTxt.innerText = "Peso estabilizado. Sujeta la barra firme...";
+                if (currentProgress < 20) {
+                    liveProgressBar.style.width = "20%";
+                }
             }
         } else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20 && !b2Sent) {
             b2Sent = true;
-            segmentPacketsCount = 0;
             queueWrite(PKT_B2_INIT);
-            liveStatusTxt.innerText = "Sujeta firme la barra. Escaneando los 8 electrodos...";
-            liveProgressBar.style.width = "38%";
+            startBioProgress();
         }
     }
 
     async function setupDeviceConnection(device) {
+        cachedDevice = device;
+
         device.addEventListener('gattserverdisconnected', () => {
             document.getElementById('btn-ble-connect').disabled = false;
             document.getElementById('btn-ble-connect').innerText = "Conectar Báscula e Iniciar";
+            if (progressTimer) clearInterval(progressTimer);
         });
 
-        showStatus("Conectando con la báscula...", "loading");
-        const server = await device.gatt.connect();
+        showStatus("Enlazando servicio de medición...", "loading");
+        const server = device.gatt.connected ? device.gatt : await device.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
         const characteristics = await service.getCharacteristics();
 
@@ -972,15 +990,15 @@
 
         queueWrite(PKT_INIT_FD);
 
-        segmentPacketsCount = 0;
+        currentProgress = 0;
         liveScanPanel.style.display = 'block';
         liveWeightVal.innerText = "--.-- kg";
         liveStatusTxt.innerText = "Súbete descalzo a la plataforma y toma la barra";
-        liveProgressBar.style.width = "10%";
+        liveProgressBar.style.width = "8%";
         metricsGrid.style.display = 'none';
         btnSubmit.style.display = 'none';
 
-        showStatus("Conexión activa. Realizando medición...", "loading");
+        showStatus("Conexión establecida. Súbete a la báscula.", "loading");
     }
 
     document.getElementById('btn-ble-connect').addEventListener('click', async () => {
@@ -990,23 +1008,32 @@
         b2Sent = false;
         fragMap = {};
         writeQueue = [];
-        segmentPacketsCount = 0;
+        if (progressTimer) clearInterval(progressTimer);
 
-        showStatus("Despierta la báscula pisándola suavemente...", "loading");
+        showStatus("Conectando con la báscula...", "loading");
 
         try {
             let device = null;
 
-            if (navigator.bluetooth.getDevices) {
+            // 1. Usar la referencia activa en memoria si ya fue autorizada en esta sesión
+            if (cachedDevice && cachedDevice.gatt) {
+                try {
+                    device = cachedDevice;
+                    if (!device.gatt.connected) {
+                        await device.gatt.connect();
+                    }
+                } catch (errCache) {
+                    device = null;
+                }
+            }
+
+            // 2. Comprobar permisos guardados en Chrome
+            if (!device && navigator.bluetooth.getDevices) {
                 try {
                     const known = await navigator.bluetooth.getDevices();
                     const matched = known.find(d => d.name && (d.name.includes("R-MSC02") || d.name.startsWith("R-")));
                     if (matched) {
-                        const connectPromise = matched.gatt.connect();
-                        const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error("timeout")), 2500)
-                        );
-                        await Promise.race([connectPromise, timeoutPromise]);
+                        await matched.gatt.connect();
                         device = matched;
                     }
                 } catch (e) {
@@ -1014,6 +1041,7 @@
                 }
             }
 
+            // 3. Si no hay conexión establecida, abrir el diálogo del navegador
             if (!device) {
                 device = await navigator.bluetooth.requestDevice({
                     filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
@@ -1026,7 +1054,7 @@
         } catch (err) {
             btn.disabled = false;
             btn.innerText = "Conectar Báscula e Iniciar";
-            showStatus("Asegúrate de que la báscula tenga la pantalla encendida: " + err.message, "error");
+            showStatus("Asegúrate de que la pantalla LED de la báscula esté encendida: " + err.message, "error");
         }
     });
 
