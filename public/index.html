@@ -509,8 +509,9 @@
 
     let generatedFitBase64 = null;
     let selectedGender = localStorage.getItem('garmin_gender') || 'male';
-    let cachedDevice = null; // Instancia en memoria persistente de la báscula
-    let progressTimer = null; // Animación progresiva suave
+    let cachedDevice = null;
+    let progressTimer = null;
+    let isProgressActive = false;
 
     const btnMale = document.getElementById('btn-male');
     const btnFemale = document.getElementById('btn-female');
@@ -565,6 +566,7 @@
         document.getElementById('section-csv').style.display = mode === 'csv' ? 'block' : 'none';
         liveScanPanel.style.display = 'none';
         if (progressTimer) clearInterval(progressTimer);
+        isProgressActive = false;
     }
 
     const emailInput = document.getElementById('email');
@@ -625,6 +627,7 @@
 
     function renderAndPrepareFit(peso, bmi, grasa, musculo, agua, hueso, visceral, metabolic, timestampSecs) {
         if (progressTimer) clearInterval(progressTimer);
+        isProgressActive = false;
         liveScanPanel.style.display = 'none';
 
         const genderByte = (selectedGender === 'female') ? 0x00 : 0x01;
@@ -802,7 +805,6 @@
     let isWriting = false;
     let writeQueue = [];
     let fragMap = {};
-    let currentProgress = 0;
 
     const PKT_INIT_FD = new Uint8Array([0xFD, 0x37, 0x06, 0x00, 0x14, 0x75, 0x00, 0x01, 0x12, 0x81, 0x23, 0xA5, 0xB7, 0x00, 0x00, 0x00]);
     const PKT_B2_INIT = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x00, 0x01, 0x06, 0xCC, 0x1C, 0x4D, 0xB5, 0x07, 0x02, 0xB4]);
@@ -838,30 +840,33 @@
         processWriteQueue();
     }
 
-    function startBioProgress() {
+    // El progreso de los electrodos arranca únicamente cuando el peso se ha fijado
+    function triggerElectrodeScanningProgress() {
+        if (isProgressActive) return;
+        isProgressActive = true;
         if (progressTimer) clearInterval(progressTimer);
-        currentProgress = 25;
-        liveProgressBar.style.width = '25%';
-        liveStatusTxt.innerText = "Escaneando electrodos de pies y manos...";
 
-        // Progreso suave continuo simulando los 3.5 segundos reales de barrido
+        let progress = 5;
+        liveProgressBar.style.width = '5%';
+        liveStatusTxt.innerText = "Peso fijado. Sujeta la barra... Escaneando electrodos";
+
         progressTimer = setInterval(() => {
-            if (currentProgress < 88) {
-                currentProgress += 3.5;
-                liveProgressBar.style.width = `${Math.round(currentProgress)}%`;
-                if (currentProgress > 50 && currentProgress < 75) {
+            if (progress < 92) {
+                progress += 2.5;
+                liveProgressBar.style.width = `${Math.round(progress)}%`;
+                if (progress > 30 && progress < 65) {
                     liveStatusTxt.innerText = "Midiendo impedancia segmental de 8 polos...";
-                } else if (currentProgress >= 75) {
-                    liveStatusTxt.innerText = "Procesando señales de bioimpedancia...";
+                } else if (progress >= 65) {
+                    liveStatusTxt.innerText = "Analizando resistencia de tronco y extremidades...";
                 }
             }
-        }, 120);
+        }, 110);
     }
 
     function parseCompleteBiaPayload(payload) {
         if (progressTimer) clearInterval(progressTimer);
         liveProgressBar.style.width = '100%';
-        liveStatusTxt.innerText = "¡Completado! Extrayendo composición corporal...";
+        liveStatusTxt.innerText = "¡Completado! Calculando parámetros...";
 
         let idx = -1;
         for (let i = 0; i < payload.length - 2; i++) {
@@ -918,16 +923,19 @@
 
         setTimeout(() => {
             renderAndPrepareFit(weight, bmi, fatPct, muscleKg, waterPct, boneKg, visceral, metabolicAge, timestamp);
-        }, 300);
+        }, 250);
 
         const pktFinal = new Uint8Array([0x55, 0xAA, 0xB2, 0x00, 0x09, 0x02, 0x01, 0x06, 0xCC, b[9], b[10], 0xB5, 0x07, 0x02, 0x06]);
         queueWrite(pktFinal);
     }
 
     function handleIncomingBytes(bytes) {
+        // Paquetes BIA segmentales
         if (bytes[0] === 0xAD || bytes[0] === 0xAE || bytes[0] === 0xAF) {
             const tag = bytes[0].toString(16).toUpperCase();
             fragMap[tag] = Array.from(bytes.slice(3));
+
+            if (!isProgressActive) triggerElectrodeScanningProgress();
 
             if (bytes[0] === 0xAD && bytes.length >= 9) {
                 const frameId = bytes[8];
@@ -942,20 +950,23 @@
             return;
         }
 
+        // Trama 0x21: lectura de peso dinámica
         if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
             const rawWeight = (bytes[8] << 8) | bytes[9];
             if (rawWeight > 1000) {
                 finalWeightKg = rawWeight / 100;
                 liveWeightVal.innerText = `${finalWeightKg.toFixed(2)} kg`;
-                liveStatusTxt.innerText = "Peso estabilizado. Sujeta la barra firme...";
-                if (currentProgress < 20) {
-                    liveProgressBar.style.width = "20%";
+                if (!isProgressActive) {
+                    liveStatusTxt.innerText = "Estabilizando peso en la plataforma...";
+                    liveProgressBar.style.width = "0%";
                 }
             }
-        } else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20 && !b2Sent) {
+        } 
+        // Trama 0x20: peso estabilizado -> la báscula inicia el circuito de bioimpedancia
+        else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20 && !b2Sent) {
             b2Sent = true;
             queueWrite(PKT_B2_INIT);
-            startBioProgress();
+            triggerElectrodeScanningProgress();
         }
     }
 
@@ -966,9 +977,10 @@
             document.getElementById('btn-ble-connect').disabled = false;
             document.getElementById('btn-ble-connect').innerText = "Conectar Báscula e Iniciar";
             if (progressTimer) clearInterval(progressTimer);
+            isProgressActive = false;
         });
 
-        showStatus("Enlazando servicio de medición...", "loading");
+        showStatus("Enlazando con la báscula...", "loading");
         const server = device.gatt.connected ? device.gatt : await device.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
         const characteristics = await service.getCharacteristics();
@@ -990,15 +1002,81 @@
 
         queueWrite(PKT_INIT_FD);
 
-        currentProgress = 0;
+        // Reset visual: la barra espera fija en 0% a que se termine de fijar el peso
+        isProgressActive = false;
+        if (progressTimer) clearInterval(progressTimer);
         liveScanPanel.style.display = 'block';
         liveWeightVal.innerText = "--.-- kg";
         liveStatusTxt.innerText = "Súbete descalzo a la plataforma y toma la barra";
-        liveProgressBar.style.width = "8%";
+        liveProgressBar.style.width = "0%";
         metricsGrid.style.display = 'none';
         btnSubmit.style.display = 'none';
 
         showStatus("Conexión establecida. Súbete a la báscula.", "loading");
+    }
+
+    // Conexión automática sin re-solicitar emparejamiento
+    async function getOrReconnectScale() {
+        // 1. Instancia activa en la memoria de la ventana
+        if (cachedDevice && cachedDevice.gatt) {
+            try {
+                if (!cachedDevice.gatt.connected) {
+                    await cachedDevice.gatt.connect();
+                }
+                return cachedDevice;
+            } catch (err) {}
+        }
+
+        // 2. Comprobar dispositivos previamente autorizados en el navegador
+        if (navigator.bluetooth.getDevices) {
+            try {
+                const devices = await navigator.bluetooth.getDevices();
+                const matched = devices.find(d => d.name && (d.name.includes("R-MSC02") || d.name.startsWith("R-")));
+
+                if (matched) {
+                    // Estrategia combinada: si no conecta de inmediato, escuchar su publicidad BLE al encenderse
+                    const connectDirect = async () => {
+                        try { return await matched.gatt.connect(); } catch (e) { return null; }
+                    };
+
+                    let server = await connectDirect();
+
+                    if (!server && matched.watchAdvertisements) {
+                        const abortCtrl = new AbortController();
+                        server = await new Promise(async (resolve) => {
+                            const timer = setTimeout(() => {
+                                abortCtrl.abort();
+                                resolve(null);
+                            }, 3500);
+
+                            matched.addEventListener('advertisementreceived', async () => {
+                                clearTimeout(timer);
+                                abortCtrl.abort();
+                                try {
+                                    const s = await matched.gatt.connect();
+                                    resolve(s);
+                                } catch (e) { resolve(null); }
+                            }, { once: true, signal: abortCtrl.signal });
+
+                            try {
+                                await matched.watchAdvertisements({ signal: abortCtrl.signal });
+                            } catch (e) {
+                                clearTimeout(timer);
+                                resolve(null);
+                            }
+                        });
+                    }
+
+                    if (server) return matched;
+                }
+            } catch (e) {}
+        }
+
+        // 3. Si no hay permisos previos o no responde la radio, abrir selector nativo
+        return await navigator.bluetooth.requestDevice({
+            filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
+            optionalServices: [SERVICE_UUID]
+        });
     }
 
     document.getElementById('btn-ble-connect').addEventListener('click', async () => {
@@ -1008,53 +1086,18 @@
         b2Sent = false;
         fragMap = {};
         writeQueue = [];
+        isProgressActive = false;
         if (progressTimer) clearInterval(progressTimer);
 
-        showStatus("Conectando con la báscula...", "loading");
+        showStatus("Buscando báscula... Asegúrate de que la pantalla LED esté encendida.", "loading");
 
         try {
-            let device = null;
-
-            // 1. Usar la referencia activa en memoria si ya fue autorizada en esta sesión
-            if (cachedDevice && cachedDevice.gatt) {
-                try {
-                    device = cachedDevice;
-                    if (!device.gatt.connected) {
-                        await device.gatt.connect();
-                    }
-                } catch (errCache) {
-                    device = null;
-                }
-            }
-
-            // 2. Comprobar permisos guardados en Chrome
-            if (!device && navigator.bluetooth.getDevices) {
-                try {
-                    const known = await navigator.bluetooth.getDevices();
-                    const matched = known.find(d => d.name && (d.name.includes("R-MSC02") || d.name.startsWith("R-")));
-                    if (matched) {
-                        await matched.gatt.connect();
-                        device = matched;
-                    }
-                } catch (e) {
-                    device = null;
-                }
-            }
-
-            // 3. Si no hay conexión establecida, abrir el diálogo del navegador
-            if (!device) {
-                device = await navigator.bluetooth.requestDevice({
-                    filters: [{ name: 'R-MSC02' }, { namePrefix: 'R-' }],
-                    optionalServices: [SERVICE_UUID]
-                });
-                await device.gatt.connect();
-            }
-
+            const device = await getOrReconnectScale();
             await setupDeviceConnection(device);
         } catch (err) {
             btn.disabled = false;
             btn.innerText = "Conectar Báscula e Iniciar";
-            showStatus("Asegúrate de que la pantalla LED de la báscula esté encendida: " + err.message, "error");
+            showStatus("Error al conectar: " + err.message, "error");
         }
     });
 
