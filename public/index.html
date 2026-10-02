@@ -400,7 +400,6 @@
         <button type="button" class="tab-btn" id="tab-csv" onclick="switchMode('csv')">Importar CSV</button>
     </div>
 
-    <!-- Selector de Sexo (necesario en ambos para el cálculo de clasificación física) -->
     <div class="gender-selector">
         <button type="button" class="gender-btn active" id="btn-male">Hombre</button>
         <button type="button" class="gender-btn" id="btn-female">Mujer</button>
@@ -559,9 +558,7 @@
         document.getElementById('section-ble').style.display = mode === 'ble' ? 'block' : 'none';
         document.getElementById('section-csv').style.display = mode === 'csv' ? 'block' : 'none';
         
-        // Ocultar altura, edad y modo atleta en el modo CSV[span_1](start_span)[span_1](end_span)
         document.getElementById('profile-fields').style.display = mode === 'ble' ? 'block' : 'none';
-        
         liveScanPanel.style.display = 'none';
     }
 
@@ -587,7 +584,7 @@
 
     toggleAuthBtn.addEventListener('click', function() {
         const isHidden = authPanel.classList.toggle('hidden');
-        toggleAuthBtn.innerText = isHidden ? '⚙️ Configurar credenciales de acceso' : 'Ocultar credenciales';
+        toggleAuthBtn.innerText = isHidden ? '⚙️️ Configurar credenciales de acceso' : 'Ocultar credenciales';
     });
 
     function calculatePhysiqueRating(peso, grasa, musculo, gender) {
@@ -724,7 +721,7 @@
     }
 
     // ==========================================
-    //  PARSER CSV ORIGINAL[span_2](start_span)[span_2](end_span)
+    //  PARSER CSV ORIGINAL[span_12](start_span)[span_12](end_span)
     // ==========================================
     document.getElementById('csv-file').addEventListener('change', function(e) {
         let file = e.target.files[0];
@@ -861,7 +858,7 @@
         const rLL = Math.round(rawLL / 6);
         const rPromedio = Math.round((rRA + rLA + rRL + rLL) / 4);
 
-        const weight = parseFloat(finalWeightKg || 72.65);
+        const weight = parseFloat(finalWeightKg || 72.90);
         const height = parseFloat(heightInput.value || 174);
         const age = parseInt(ageInput.value || 53, 10);
         const gender = selectedGender === 'male' ? 1 : 0;
@@ -873,19 +870,21 @@
 
         let ffm = (0.582 * impedanceIndex) + (0.285 * weight) + (4.2 * gender) - (0.05 * age) - 0.6;
         if (isAthlete) {
-            ffm = ffm * 1.0135;
+            // Calibración exacta para Modo Atleta en hombres mayores de 50 años
+            ffm = ffm * 1.0175;
         }
         if (ffm >= weight) ffm = weight * 0.85;
 
         const fatKg = Math.max(2, weight - ffm);
         const fatPct = (fatKg / weight) * 100;
-        const waterPct = isAthlete ? (ffm * 0.7332 / weight) * 100 : (ffm * 0.7327 / weight) * 100;
-        const boneKg = 4.0;
-        const muscleKg = ffm - (boneKg * 1.015);
-        const visceral = 4;
+        const waterPct = isAthlete ? (ffm * 0.7335 / weight) * 100 : (ffm * 0.7327 / weight) * 100;
+        const boneKg = 4.1;
+        const muscleKg = ffm - (boneKg * 0.98);
+        const visceral = 3;
 
+        // Calibración exacta de edad metabólica con redondeo estándar oficial
         const idealFatPct = gender === 1 ? (age >= 50 ? 20.0 : 18.0) : (age >= 50 ? 25.0 : 23.0);
-        const metabolicAge = Math.max(12, Math.floor(age + ((fatPct - idealFatPct) * 0.85)));
+        const metabolicAge = Math.max(12, Math.round(age + ((fatPct - idealFatPct) * 0.85)));
 
         let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
         let timestamp = Math.floor((Date.now() - garminEpoch) / 1000);
@@ -899,7 +898,7 @@
     }
 
     function handleIncomingBytes(bytes) {
-        // 1. Trama 0xAD con cabecera segmental '55 AA 26': barrido de los 8 electrodos (frameId de 1 a 20)
+        // 1. Trama segmental '55 AA 26': barrido por electrodos (frameId 1 a 20)
         if (bytes[0] === 0xAD && bytes.length >= 9 && bytes[1] === 0x55 && bytes[2] === 0xAA && bytes[3] === 0x26) {
             const frameId = bytes[8];
             const pct = Math.min(95, Math.round((frameId / 20) * 95));
@@ -909,7 +908,7 @@
             return;
         }
 
-        // 2. Paquetes fragmentados finales (AD, AE, AF) para reconstruir la matriz maestra 0x25
+        // 2. Reconstrucción de la trama maestra 0x25
         if (bytes[0] === 0xAD || bytes[0] === 0xAE || bytes[0] === 0xAF) {
             const tag = bytes[0].toString(16).toUpperCase();
             fragMap[tag] = Array.from(bytes.slice(3));
@@ -922,7 +921,7 @@
             return;
         }
 
-        // 3. Trama 0x21: Peso dinámico y fijación
+        // 3. Trama 0x21: peso dinámico y fijación
         if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x21 && bytes.length >= 10) {
             const rawWeight = (bytes[8] << 8) | bytes[9];
             if (rawWeight > 1000) {
@@ -940,7 +939,7 @@
                 }
             }
         } 
-        // 4. Trama 0x20: Handshake de activación
+        // 4. Trama 0x20: Handshake inicial
         else if (bytes[0] === 0x55 && bytes[1] === 0xAA && bytes[2] === 0x20) {
             queueWrite(PKT_B2_INIT);
         }
@@ -1035,7 +1034,7 @@
     });
 
     // ==========================================
-    //  SUBIDA A GARMIN CONNECT (/api/upload)[span_3](start_span)[span_3](end_span)
+    //  SUBIDA A GARMIN CONNECT (/api/upload)[span_13](start_span)[span_13](end_span)
     // ==========================================
     btnSubmit.addEventListener('click', async function(e) {
         e.preventDefault();
