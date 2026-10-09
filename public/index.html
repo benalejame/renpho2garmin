@@ -42,13 +42,32 @@
             width: 100%;
             border: 1px solid var(--border);
             box-sizing: border-box;
+            position: relative;
+        }
+
+        .header-container {
+            text-align: center;
+            margin-bottom: 12px;
         }
 
         h1 {
             font-size: 20px;
             color: #38bdf8;
-            margin: 0 0 6px 0;
-            text-align: center;
+            margin: 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .version-tag {
+            font-size: 11px;
+            font-weight: 700;
+            background: #0f172a;
+            color: #38bdf8;
+            padding: 2px 7px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            vertical-align: middle;
         }
 
         .tabs {
@@ -388,12 +407,22 @@
         .status.success { background: #064e3b; color: #a7f3d0; border: 1px solid #059669; display: block; }
         .status.error { background: #7f1d1d; color: #fecaca; border: 1px solid #dc2626; display: block; }
         .status.loading { background: #1e3a5f; color: #93c5fd; border: 1px solid #2563eb; display: block; }
+
+        .app-footer {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 11px;
+            color: #64748b;
+            letter-spacing: 0.3px;
+        }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h1>Renpho ➔ Garmin Connect</h1>
+    <div class="header-container">
+        <h1>Renpho ➔ Garmin <span class="version-tag" id="app-version-badge">v1.2.0</span></h1>
+    </div>
 
     <div class="tabs">
         <button type="button" class="tab-btn active" id="tab-ble" onclick="switchMode('ble')">Báscula BLE (1 Clic)</button>
@@ -477,9 +506,14 @@
     </form>
 
     <div id="status" class="status"></div>
+    <div class="app-footer">Renpho 8E Connector • Compilación <span id="app-version-footer">v1.2.0</span></div>
 </div>
 
 <script>
+    const APP_VERSION = "v1.2.0";
+    document.getElementById('app-version-badge').innerText = APP_VERSION;
+    document.getElementById('app-version-footer').innerText = APP_VERSION;
+
     const crcTable = [
         0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401,
         0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400
@@ -867,7 +901,7 @@
 
         let ffm = (0.582 * impedanceIndex) + (0.285 * weight) + (4.2 * gender) - (0.05 * age) - 0.6;
         if (isAthlete) {
-            // Factor calibrado con el algoritmo oficial de Renpho Health
+            // Factor balanceado según las dos tomas oficiales Renpho
             ffm = ffm * 1.025;
         }
         if (ffm >= weight) ffm = weight * 0.85;
