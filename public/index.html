@@ -421,7 +421,7 @@
 
 <div class="card">
     <div class="header-container">
-        <h1>Renpho ➔ Garmin <span class="version-tag" id="app-version-badge">v1.2.0</span></h1>
+        <h1>Renpho ➔ Garmin <span class="version-tag" id="app-version-badge">v1.2.1</span></h1>
     </div>
 
     <div class="tabs">
@@ -506,11 +506,11 @@
     </form>
 
     <div id="status" class="status"></div>
-    <div class="app-footer">Renpho 8E Connector • Compilación <span id="app-version-footer">v1.2.0</span></div>
+    <div class="app-footer">Renpho 8E Connector • Compilación <span id="app-version-footer">v1.2.1</span></div>
 </div>
 
 <script>
-    const APP_VERSION = "v1.2.0";
+    const APP_VERSION = "v1.2.1";
     document.getElementById('app-version-badge').innerText = APP_VERSION;
     document.getElementById('app-version-footer').innerText = APP_VERSION;
 
@@ -797,7 +797,7 @@
                 let musculo = parseFloat(g(['Masa muscular(kg)', 'Masa muscular', 'Muscle Mass(kg)', 'Muscle Mass']));
                 let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Agua corporal(%)', 'Body Water(%)']));
                 let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Masa Ã³sea(kg)', 'Bone Mass(kg)']));
-                let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 3, 10);
+                let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 4, 10);
                 let metabolic = parseInt(g(['Edad metabólica', 'Edad metabolica', 'Edad metabÃ³lica', 'Metabolic Age']) || 51, 10);
 
                 let fecha = g(['Fecha', 'Date']);
@@ -901,8 +901,8 @@
 
         let ffm = (0.582 * impedanceIndex) + (0.285 * weight) + (4.2 * gender) - (0.05 * age) - 0.6;
         if (isAthlete) {
-            // Factor balanceado según las dos tomas oficiales Renpho
-            ffm = ffm * 1.025;
+            // Factor calibrado con el algoritmo oficial de Renpho Health
+            ffm = ffm * 1.021;
         }
         if (ffm >= weight) ffm = weight * 0.85;
 
@@ -913,11 +913,11 @@
         const muscleKg = ffm - (boneKg * 1.0);
         
         // Grasa visceral calculada dinámicamente según composición
-        const visceral = fatPct >= 17.5 ? 4 : 3;
+        const visceral = fatPct >= 17.0 ? 4 : 3;
 
         // Edad metabólica anclada a la calibración oficial
         const idealFatPct = gender === 1 ? (age >= 50 ? 20.0 : 18.0) : (age >= 50 ? 25.0 : 23.0);
-        const metabolicAge = Math.max(12, Math.round(51 + ((fatPct - 17.0) * 0.6)));
+        const metabolicAge = Math.max(12, Math.round(51 + ((fatPct - 17.0) * 0.5)));
 
         let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
         let timestamp = Math.floor((Date.now() - garminEpoch) / 1000);
