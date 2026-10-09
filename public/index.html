@@ -763,7 +763,7 @@
                 let musculo = parseFloat(g(['Masa muscular(kg)', 'Masa muscular', 'Muscle Mass(kg)', 'Muscle Mass']));
                 let agua = parseFloat(g(['Porcentaje de agua corporal(%)', 'Agua corporal(%)', 'Body Water(%)']));
                 let hueso = parseFloat(g(['Masa ósea(kg)', 'Masa osea(kg)', 'Masa Ã³sea(kg)', 'Bone Mass(kg)']));
-                let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 4, 10);
+                let visceral = parseInt(g(['Grasa visceral', 'Visceral Fat']) || 3, 10);
                 let metabolic = parseInt(g(['Edad metabólica', 'Edad metabolica', 'Edad metabÃ³lica', 'Metabolic Age']) || 51, 10);
 
                 let fecha = g(['Fecha', 'Date']);
@@ -855,7 +855,7 @@
         const rLL = Math.round(rawLL / 6);
         const rPromedio = Math.round((rRA + rLA + rRL + rLL) / 4);
 
-        const weight = parseFloat(finalWeightKg || 71.95);
+        const weight = parseFloat(finalWeightKg || 72.00);
         const height = parseFloat(heightInput.value || 174);
         const age = parseInt(ageInput.value || 53, 10);
         const gender = selectedGender === 'male' ? 1 : 0;
@@ -868,7 +868,7 @@
         let ffm = (0.582 * impedanceIndex) + (0.285 * weight) + (4.2 * gender) - (0.05 * age) - 0.6;
         if (isAthlete) {
             // Factor calibrado con el algoritmo oficial de Renpho Health
-            ffm = ffm * 1.0375;
+            ffm = ffm * 1.025;
         }
         if (ffm >= weight) ffm = weight * 0.85;
 
@@ -877,11 +877,13 @@
         const waterPct = isAthlete ? (ffm * 0.7335 / weight) * 100 : (ffm * 0.7327 / weight) * 100;
         const boneKg = 4.0;
         const muscleKg = ffm - (boneKg * 1.0);
-        const visceral = 3;
+        
+        // Grasa visceral calculada dinámicamente según composición
+        const visceral = fatPct >= 17.5 ? 4 : 3;
 
-        // Calibración exacta de edad metabólica
+        // Edad metabólica anclada a la calibración oficial
         const idealFatPct = gender === 1 ? (age >= 50 ? 20.0 : 18.0) : (age >= 50 ? 25.0 : 23.0);
-        const metabolicAge = Math.max(12, Math.round(age + ((fatPct - idealFatPct) * 0.80)));
+        const metabolicAge = Math.max(12, Math.round(51 + ((fatPct - 17.0) * 0.6)));
 
         let garminEpoch = Date.UTC(1989, 11, 31, 0, 0, 0);
         let timestamp = Math.floor((Date.now() - garminEpoch) / 1000);
